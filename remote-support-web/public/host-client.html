@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ScreenConnect Host Client</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="host-client-page">
+    <main class="remote-window modern-host-window">
+      <header class="remote-topbar">
+        <div class="topbar-left">
+          <div class="topbar-brand">
+            <strong id="remoteTitle">Remote Support Session</strong>
+            <span id="remoteSubtitle">Professional Host Console</span>
+          </div>
+          <span id="connectionBadge" class="connection-badge waiting">Waiting</span>
+        </div>
+
+        <nav class="remote-toolbar" aria-label="Remote controls">
+          <button class="active" type="button" title="Screen View" aria-label="Screen View">&#128421;</button>
+          <button id="inputToggle" type="button" title="Enable keyboard and mouse" aria-label="Enable keyboard and mouse">&#9889;</button>
+          <button id="fileQueue" type="button" title="File transfer" aria-label="File transfer">&#128188;</button>
+          <button id="clipboardToggle" type="button" title="Clipboard sync" aria-label="Clipboard sync">&#8644;</button>
+          <button id="snapshot" type="button" title="Capture screenshot (saves PNG)" aria-label="Capture screenshot">&#128247;</button>
+          <button id="toggleHud" type="button" title="Quality HUD (Ctrl+H)" aria-label="Quality HUD">&#128202;</button>
+          <button id="toggleFullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
+          <button type="button" title="Participants" aria-label="Participants">&#128101;</button>
+          <button type="button" title="Annotations" aria-label="Annotations">&#9998;</button>
+          <button type="button" title="Open chat" aria-label="Open chat">&#128172;</button>
+          <button id="blockInputToggle" type="button" title="Block guest input" aria-label="Block guest input">&#8856;</button>
+          <button id="blankToggle" type="button" title="Blank guest monitor" aria-label="Blank guest monitor">&#65291;</button>
+          <button type="button" title="Session details" aria-label="Session details">&#9432;</button>
+        </nav>
+
+        <div class="topbar-right">
+          <span id="sessionDuration" class="session-duration">00:00</span>
+          <button id="endSessionButton" class="danger-button" type="button" aria-label="End session">End Session</button>
+        </div>
+      </header>
+
+      <div class="remote-layout">
+        <aside class="session-info-panel">
+          <h2>Session Information</h2>
+          <dl class="session-info-list">
+            <div><dt>Customer</dt><dd id="infoCustomer">Guest User</dd></div>
+            <div><dt>Session ID</dt><dd id="infoSessionId">-</dd></div>
+            <div><dt>Status</dt><dd id="infoStatus">Waiting</dd></div>
+            <div><dt>Duration</dt><dd id="infoDuration">00:00</dd></div>
+            <div><dt>Device</dt><dd id="infoDevice">Windows Device</dd></div>
+            <div><dt>Quality</dt><dd id="infoQuality">Waiting • 0 FPS</dd></div>
+          </dl>
+
+          <div class="zoom-controls">
+            <h3>View Controls</h3>
+            <p class="zoom-help">Ctrl+Scroll to zoom • Ctrl+0 to reset • Ctrl+H for HUD</p>
+          </div>
+        </aside>
+
+        <section class="remote-viewer-stage">
+          <section class="remote-screen" id="remoteScreen" tabindex="0">
+            <img id="remoteFrame" alt="Remote customer screen" hidden>
+            <div id="remoteEmpty" class="remote-empty">
+              <div class="empty-state">
+                <div class="empty-icon">&#128421;</div>
+                <strong>Waiting for remote screen stream</strong>
+                <p>Once the customer connects and shares their screen, a live view will appear here with full remote control capability.</p>
+                <p class="empty-hint">Windows • macOS • Android • iOS (view-only) — All device types supported</p>
+              </div>
+            </div>
+
+            <!-- Quality HUD Overlay (toggled with Ctrl+H or toolbar button) -->
+            <div id="qualityHud" class="quality-hud" hidden>
+              <div class="hud-title">Stream Quality</div>
+              <div class="hud-row"><span class="hud-label">FPS</span><span id="fpsDisplay" class="hud-value">0</span></div>
+              <div class="hud-row"><span class="hud-label">Quality</span><span id="qualityTier" class="hud-value">—</span></div>
+              <div class="hud-row"><span class="hud-label">Resolution</span><span id="resolution" class="hud-value">—</span></div>
+              <div class="hud-row"><span class="hud-label">Bandwidth</span><span id="bandwidth" class="hud-value">—</span></div>
+              <div class="hud-row"><span class="hud-label">Latency</span><span id="latency" class="hud-value">—</span></div>
+              <div class="hud-row"><span class="hud-label">Frames</span><span id="framesTotal" class="hud-value">0</span></div>
+              <div class="hud-row"><span class="hud-label">Zoom</span><span id="zoomLevel" class="hud-value">100%</span></div>
+            </div>
+          </section>
+
+          <section class="remote-status">
+            <h2>Session Status</h2>
+            <strong id="remoteStatus">Waiting for your guest...</strong>
+            <p id="remoteStatusMessage">You have successfully connected to the session, but your guest has not yet connected. Your session will start when they connect.</p>
+            <div id="statusActions" class="status-actions" hidden>
+              <button id="requestBroadcastRestart" class="action-button" type="button">Request Broadcast Restart</button>
+            </div>
+          </section>
+        </section>
+
+        <aside class="session-actions-panel">
+          <section class="quick-controls">
+            <h2>Quick Controls</h2>
+            <div class="quick-grid">
+              <button id="clipboardTile" type="button">Clipboard Sync</button>
+              <button id="shareClipboardTile" class="enabled" type="button">Share Clipboard</button>
+              <button id="suspendInput" type="button">Suspend Input</button>
+              <button id="blockGuest" type="button">Block Guest</button>
+              <button id="blankTile" type="button">Blank Monitor</button>
+              <button type="button">Wake Lock</button>
+            </div>
+          </section>
+
+          <section class="chat-panel">
+            <h2>Session Chat</h2>
+            <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+            <form id="chatForm" class="chat-form">
+              <input id="chatInput" type="text" placeholder="Type a message to customer..." autocomplete="off">
+              <button type="submit">Send</button>
+            </form>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <script>
+      // Wire up toolbar HUD toggle and fullscreen buttons before the main script
+      document.getElementById('toggleHud')?.addEventListener('click', () => {
+        const hud = document.getElementById('qualityHud');
+        if (hud) hud.hidden = !hud.hidden;
+      });
+      document.getElementById('toggleFullscreen')?.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.querySelector('.remote-window')?.requestFullscreen?.().catch(() => {});
+        } else {
+          document.exitFullscreen?.();
+        }
+      });
+    </script>
+    <script src="/host-client.js" type="module"></script>
+  </body>
+</html>

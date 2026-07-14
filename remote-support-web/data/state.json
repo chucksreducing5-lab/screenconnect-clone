@@ -1,0 +1,917 @@
+{
+  "version": 1,
+  "savedAt": 1783979968001,
+  "sessions": [
+    {
+      "id": "jf9EsbiU",
+      "joinCode": "94768400",
+      "createdAt": 1783796562148,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "RKFlvGZ9eY69E9JajyycHoFT"
+      },
+      "customer": {
+        "token": "ocKvGIyLi6q04saqjzsQd21G"
+      },
+      "status": "waiting",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": 1783797041613,
+        "endpoint": 1783796591326
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "customerPlatform": "ios",
+      "customerCapabilities": {
+        "browserShare": true,
+        "nativeInstall": false,
+        "screenCapture": false,
+        "mobileAppBroadcast": true,
+        "remoteControl": false
+      },
+      "customerScreenStatus": "unavailable",
+      "mobileSupport": {
+        "deepLink": "supportdesk://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=jf9EsbiU&token=ocKvGIyLi6q04saqjzsQd21G&platform=ios&client=ios-mobile-broadcast",
+        "screenconnectDeepLink": "screenconnect://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=jf9EsbiU&token=ocKvGIyLi6q04saqjzsQd21G&client=ios-mobile-broadcast",
+        "universalLink": "https://www.helpsupport.top/customer?code=94768400&mobileApp=1",
+        "appName": "Remote Support",
+        "hostUrl": "https://www.helpsupport.top",
+        "joinCode": "94768400",
+        "installUrl": "",
+        "websocketClient": "ios-mobile-broadcast",
+        "broadcastTechnology": "apple-replaykit-broadcast-extension",
+        "requiresNativeApp": true,
+        "supportsRemoteControl": false,
+        "frameMessageType": "screen.frame",
+        "statusMessageType": "screen.broadcast.status",
+        "reason": "iPhone/iPad browsers do not expose full-device screen capture to web pages. Use the Remote Support app with Apple Screen Broadcast permission.",
+        "appInstructions": "Open Remote Support. Visit Host URL https://www.helpsupport.top. Enter Code 94768400. Initiate ScreenShare. Then tap Start Broadcast in the Apple broadcast prompt."
+      },
+      "customerSocketId": null,
+      "lastCustomerSequence": -1,
+      "noFrameTelemetryDueAt": 1783796606325,
+      "noFrameTelemetryLoggedAt": null,
+      "lastHeartbeatAt": 1783796645746,
+      "mobileHeartbeatTimeoutAt": 1783796660746,
+      "mobileStreamReconnectRequired": false,
+      "nativeConnected": false,
+      "blankScreen": false
+    },
+    {
+      "id": "MYPeTDJE",
+      "joinCode": "75687091",
+      "createdAt": 1783966560881,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "n6grGoiAjKqab3AQlRJ3UatQ"
+      },
+      "customer": {
+        "token": "wO7m8RVttZi7A6cUxhoOHKvI"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": 1783966561063
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "customerPlatform": "macos",
+      "customerCapabilities": {
+        "browserShare": true,
+        "nativeInstall": false,
+        "screenCapture": true,
+        "mobileAppBroadcast": false,
+        "remoteControl": true
+      },
+      "customerScreenStatus": "browser_screen_capture_available",
+      "customerLifecycleStatus": "code_verified",
+      "customerLifecycleStatusAt": 1783966561063,
+      "mobileSupport": {
+        "deepLink": "supportdesk://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=MYPeTDJE&token=wO7m8RVttZi7A6cUxhoOHKvI&platform=macos&client=android-mobile-broadcast",
+        "screenconnectDeepLink": "screenconnect://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=MYPeTDJE&token=wO7m8RVttZi7A6cUxhoOHKvI&client=android-mobile-broadcast",
+        "universalLink": "https://www.helpsupport.top/customer?code=75687091&mobileApp=1",
+        "appName": "Remote Support",
+        "hostUrl": "https://www.helpsupport.top",
+        "joinCode": "75687091",
+        "installUrl": "",
+        "websocketClient": "mobile-broadcast",
+        "broadcastTechnology": "android-media-projection",
+        "requiresNativeApp": false,
+        "supportsRemoteControl": true,
+        "frameMessageType": "screen.frame",
+        "statusMessageType": "screen.broadcast.status",
+        "reason": "Use the Remote Support app when browser screen sharing is unavailable.",
+        "appInstructions": "Open Remote Support. Visit Host URL https://www.helpsupport.top. Enter Code 75687091. Initiate ScreenShare. Then approve the system screen sharing prompt."
+      },
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "0vhDkcgw",
+      "joinCode": "81208966",
+      "createdAt": 1783966715419,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "xk5CIN2xpmg15IIhQ-4nYfX5"
+      },
+      "customer": {
+        "token": "0w28UFiLRED8u0_cYuLxRgyN"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": 1783966739676
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "customerPlatform": "iphone",
+      "customerCapabilities": {
+        "browserShare": false,
+        "nativeInstall": false,
+        "screenCapture": false,
+        "mobileAppBroadcast": true,
+        "remoteControl": false
+      },
+      "customerScreenStatus": "ios_native_app_required",
+      "customerLifecycleStatus": "code_verified",
+      "customerLifecycleStatusAt": 1783966739676,
+      "mobileSupport": {
+        "deepLink": "supportdesk://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=0vhDkcgw&token=0w28UFiLRED8u0_cYuLxRgyN&platform=iphone&client=android-mobile-broadcast",
+        "screenconnectDeepLink": "screenconnect://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=0vhDkcgw&token=0w28UFiLRED8u0_cYuLxRgyN&client=android-mobile-broadcast",
+        "universalLink": "https://www.helpsupport.top/customer?code=81208966&mobileApp=1",
+        "appName": "Remote Support",
+        "hostUrl": "https://www.helpsupport.top",
+        "joinCode": "81208966",
+        "installUrl": "",
+        "websocketClient": "mobile-broadcast",
+        "broadcastTechnology": "android-media-projection",
+        "requiresNativeApp": true,
+        "supportsRemoteControl": true,
+        "frameMessageType": "screen.frame",
+        "statusMessageType": "screen.broadcast.status",
+        "reason": "Use the Remote Support app when browser screen sharing is unavailable.",
+        "appInstructions": "Open Remote Support. Visit Host URL https://www.helpsupport.top. Enter Code 81208966. Initiate ScreenShare. Then approve the system screen sharing prompt."
+      },
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "_4h53YTO",
+      "joinCode": "92929090",
+      "createdAt": 1783967550800,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "aiuiuyDdIM6u1MzptcY6maev"
+      },
+      "customer": {
+        "token": "XqEVzlO-fue9eo25XokxJUNL"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": 1783967550845
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "customerPlatform": "iphone",
+      "customerCapabilities": {
+        "browserShare": false,
+        "nativeInstall": false,
+        "screenCapture": false,
+        "mobileAppBroadcast": true,
+        "remoteControl": false
+      },
+      "customerScreenStatus": "ios_native_app_required",
+      "customerLifecycleStatus": "code_verified",
+      "customerLifecycleStatusAt": 1783967550844,
+      "mobileSupport": {
+        "deepLink": "supportdesk://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=_4h53YTO&token=XqEVzlO-fue9eo25XokxJUNL&platform=iphone&client=ios-mobile-broadcast",
+        "screenconnectDeepLink": "screenconnect://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=_4h53YTO&token=XqEVzlO-fue9eo25XokxJUNL&client=ios-mobile-broadcast",
+        "universalLink": "https://www.helpsupport.top/customer?code=92929090&mobileApp=1",
+        "appName": "Remote Support",
+        "hostUrl": "https://www.helpsupport.top",
+        "joinCode": "92929090",
+        "installUrl": "",
+        "websocketClient": "ios-mobile-broadcast",
+        "broadcastTechnology": "apple-replaykit-broadcast-extension",
+        "requiresNativeApp": true,
+        "supportsRemoteControl": false,
+        "frameMessageType": "screen.frame",
+        "statusMessageType": "screen.broadcast.status",
+        "reason": "iPhone/iPad browsers do not expose full-device screen capture to web pages. Use the Remote Support app with Apple Screen Broadcast permission.",
+        "appInstructions": "Open Remote Support. Visit Host URL https://www.helpsupport.top. Enter Code 92929090. Initiate ScreenShare. Then tap Start Broadcast in the Apple broadcast prompt."
+      },
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "HV6qc6rF",
+      "joinCode": "51117125",
+      "createdAt": 1783968047034,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "6qh_zz-Rww7IvcjsycX_Z_m8"
+      },
+      "customer": {
+        "token": "xN1__AKc5FAT1v21HPUZ_fin"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": null
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "szlVE0sP",
+      "joinCode": "45785594",
+      "createdAt": 1783968855438,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "sCuAQEYIb7_BeNOI6MruxD1H"
+      },
+      "customer": {
+        "token": "idjnLmzOreM1kEHOoasNMcZJ"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": 1783968855466
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "customerPlatform": "iphone",
+      "customerCapabilities": {
+        "browserShare": true,
+        "nativeInstall": false,
+        "screenCapture": false,
+        "mobileAppBroadcast": true,
+        "remoteControl": false
+      },
+      "customerScreenStatus": "ios_native_app_required",
+      "customerLifecycleStatus": "code_verified",
+      "customerLifecycleStatusAt": 1783968855466,
+      "mobileSupport": {
+        "deepLink": "supportdesk://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=szlVE0sP&token=idjnLmzOreM1kEHOoasNMcZJ&platform=iphone&client=ios-mobile-broadcast",
+        "screenconnectDeepLink": "screenconnect://join?server=https%3A%2F%2Fwww.helpsupport.top&sessionId=szlVE0sP&token=idjnLmzOreM1kEHOoasNMcZJ&client=ios-mobile-broadcast",
+        "universalLink": "https://www.helpsupport.top/customer?code=45785594&mobileApp=1",
+        "appName": "ConnectWise Control",
+        "hostUrl": "https://www.helpsupport.top",
+        "joinCode": "45785594",
+        "installUrl": "https://apps.apple.com/app/connectwise-control/id1049829834",
+        "websocketClient": "ios-mobile-broadcast",
+        "broadcastTechnology": "apple-replaykit-broadcast-extension",
+        "requiresNativeApp": true,
+        "supportsRemoteControl": false,
+        "frameMessageType": "screen.frame",
+        "statusMessageType": "screen.broadcast.status",
+        "reason": "iPhone/iPad browsers do not expose full-device screen capture to web pages. Use the ConnectWise Control app with Apple Screen Broadcast permission.",
+        "appInstructions": "Open ConnectWise Control. Visit Host URL https://www.helpsupport.top. Enter Code 45785594. Initiate ScreenShare. Then tap Start Broadcast in the Apple broadcast prompt."
+      },
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "RTBRj0tI",
+      "joinCode": "50879284",
+      "createdAt": 1783970651758,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "2ef2pz0ekYGmDcXwbBSDvhZx"
+      },
+      "customer": {
+        "token": "r5gK7z4EFdq2PBlT3zWehats"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": null
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "cDs5tWjo",
+      "joinCode": "27565338",
+      "createdAt": 1783971045743,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "kyfmMzkd4ysiD3s9JTFdHkGu"
+      },
+      "customer": {
+        "token": "t-TIHmV0vzv2X88IwPCTpTCu"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": null
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "OWfIowpl",
+      "joinCode": "23390971",
+      "createdAt": 1783979848086,
+      "deviceId": null,
+      "deviceName": "Ad-hoc browser guest",
+      "displayName": "Ad-hoc browser guest",
+      "permanentAccess": false,
+      "agent": {
+        "token": "jDWsDLq0Dum7e0A8-XzqU51V"
+      },
+      "customer": {
+        "token": "yrr4Grcn5MbiouAtUACtqxRF"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": null
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    },
+    {
+      "id": "l_Qs3gli",
+      "name": "Test",
+      "displayName": "Test",
+      "type": 0,
+      "sessionType": 0,
+      "joinCode": "10483793",
+      "code": "10483793",
+      "createdAt": 1783979967751,
+      "deviceId": null,
+      "deviceName": null,
+      "host": "admin",
+      "customProperty1": "",
+      "customProperty2": "",
+      "customProperty3": "",
+      "customProperty4": "",
+      "permanentAccess": false,
+      "agent": {
+        "token": "PgqzDa7ClUfAg17b2U_UZcVu"
+      },
+      "customer": {
+        "token": "NHCh5Uwat3r3etSG5VvHLyjH"
+      },
+      "status": "created",
+      "permissions": {
+        "screen": true,
+        "input": true,
+        "fileTransfer": true,
+        "terminal": true,
+        "recording": true
+      },
+      "lastSeen": {
+        "technician": null,
+        "endpoint": null
+      },
+      "recording": false,
+      "files": [],
+      "commands": [],
+      "nativeConnected": false,
+      "customerSocketId": null,
+      "blankScreen": false
+    }
+  ],
+  "devices": [],
+  "agentLaunches": [],
+  "hostLaunches": [],
+  "auditLog": [
+    {
+      "id": "0hrPH_GSm2",
+      "at": 1783979967751,
+      "action": "session.created",
+      "actor": "admin",
+      "sessionId": "l_Qs3gli",
+      "deviceId": null,
+      "message": "Session \"Test\" created (type=0)"
+    },
+    {
+      "id": "ZGvTqGbJYx",
+      "at": 1783979848086,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "OWfIowpl",
+      "deviceId": null,
+      "message": "Session 23390971 created for browser guest"
+    },
+    {
+      "id": "Xj3cjzmg0b",
+      "at": 1783971045743,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "cDs5tWjo",
+      "deviceId": null,
+      "message": "Session 27565338 created for browser guest"
+    },
+    {
+      "id": "ElWXPxZQW2",
+      "at": 1783970651758,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "RTBRj0tI",
+      "deviceId": null,
+      "message": "Session 50879284 created for browser guest"
+    },
+    {
+      "id": "FpK0DJQeHk",
+      "at": 1783968855467,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "szlVE0sP",
+      "deviceId": null,
+      "message": "Endpoint joined session szlVE0sP"
+    },
+    {
+      "id": "A6Z93cAsw9",
+      "at": 1783968855438,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "szlVE0sP",
+      "deviceId": null,
+      "message": "Session 45785594 created for browser guest"
+    },
+    {
+      "id": "ahd8D_ksr9",
+      "at": 1783968047034,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "HV6qc6rF",
+      "deviceId": null,
+      "message": "Session 51117125 created for browser guest"
+    },
+    {
+      "id": "Bre6PRqNky",
+      "at": 1783967550845,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "_4h53YTO",
+      "deviceId": null,
+      "message": "Endpoint joined session _4h53YTO"
+    },
+    {
+      "id": "dkcVHAe7FY",
+      "at": 1783967550800,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "_4h53YTO",
+      "deviceId": null,
+      "message": "Session 92929090 created for browser guest"
+    },
+    {
+      "id": "-EANUG7at1",
+      "at": 1783966739676,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Endpoint joined session 0vhDkcgw"
+    },
+    {
+      "id": "8qUPdIn7nh",
+      "at": 1783966715591,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Endpoint joined session 0vhDkcgw"
+    },
+    {
+      "id": "c2duFA61_q",
+      "at": 1783966715547,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Endpoint joined session 0vhDkcgw"
+    },
+    {
+      "id": "vfK_N5sj4d",
+      "at": 1783966715511,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Endpoint joined session 0vhDkcgw"
+    },
+    {
+      "id": "ZbTEIY0zux",
+      "at": 1783966715472,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Endpoint joined session 0vhDkcgw"
+    },
+    {
+      "id": "OsTB2rf2Sn",
+      "at": 1783966715420,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "0vhDkcgw",
+      "deviceId": null,
+      "message": "Session 81208966 created for browser guest"
+    },
+    {
+      "id": "9uzubD64jj",
+      "at": 1783966561063,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "MYPeTDJE",
+      "deviceId": null,
+      "message": "Endpoint joined session MYPeTDJE"
+    },
+    {
+      "id": "0cYzIS37eh",
+      "at": 1783966561027,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "MYPeTDJE",
+      "deviceId": null,
+      "message": "Endpoint joined session MYPeTDJE"
+    },
+    {
+      "id": "Ew1dsOxhlZ",
+      "at": 1783966560992,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "MYPeTDJE",
+      "deviceId": null,
+      "message": "Endpoint joined session MYPeTDJE"
+    },
+    {
+      "id": "Fp8FaUYetS",
+      "at": 1783966560956,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "MYPeTDJE",
+      "deviceId": null,
+      "message": "Endpoint joined session MYPeTDJE"
+    },
+    {
+      "id": "zZyD3rdZWi",
+      "at": 1783966560881,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "MYPeTDJE",
+      "deviceId": null,
+      "message": "Session 75687091 created for browser guest"
+    },
+    {
+      "id": "Pf_9fnF7kx",
+      "at": 1783798992720,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "yNkbOnhwkm",
+      "at": 1783798900176,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "KX71erwp4A",
+      "at": 1783798861886,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "E_NZHNJ1XJ",
+      "at": 1783798845948,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "7ACMCr-Ql5",
+      "at": 1783798840229,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "NMH_LVGKVF",
+      "at": 1783798813892,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "bOoGT-3kni",
+      "at": 1783798742837,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "0gkutPOXtk",
+      "at": 1783798691960,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "Vhb-_11bDP",
+      "at": 1783797166689,
+      "action": "agent.socket.disconnected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent disconnected from signaling channel"
+    },
+    {
+      "id": "2HCmGy2KVw",
+      "at": 1783797042077,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "DgJD_0mAJ5",
+      "at": 1783797041613,
+      "action": "agent.socket.connected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent connected to secure signaling channel"
+    },
+    {
+      "id": "EYx1cu1UUS",
+      "at": 1783797036197,
+      "action": "agent.socket.disconnected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent disconnected from signaling channel"
+    },
+    {
+      "id": "iWU62eCjwJ",
+      "at": 1783796911107,
+      "action": "agent.socket.connected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent connected to secure signaling channel"
+    },
+    {
+      "id": "AYAV8RXeIK",
+      "at": 1783796910623,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "-cg3tyoCdl",
+      "at": 1783796904242,
+      "action": "agent.socket.disconnected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent disconnected from signaling channel"
+    },
+    {
+      "id": "89tcdEK9-R",
+      "at": 1783796779151,
+      "action": "agent.socket.connected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent connected to secure signaling channel"
+    },
+    {
+      "id": "-LLIas5rUz",
+      "at": 1783796778698,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    },
+    {
+      "id": "x_dVR85qXd",
+      "at": 1783796772684,
+      "action": "agent.socket.disconnected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent disconnected from signaling channel"
+    },
+    {
+      "id": "o0M7JJFJyC",
+      "at": 1783796647569,
+      "action": "customer.socket.disconnected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "customer disconnected from signaling channel"
+    },
+    {
+      "id": "XSm2CAf7lW",
+      "at": 1783796646988,
+      "action": "host.launch.opened",
+      "actor": "technician",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "Native host viewer download prepared for session jf9EsbiU"
+    },
+    {
+      "id": "uEMOjSo2ES",
+      "at": 1783796595475,
+      "action": "host.launch.opened",
+      "actor": "technician",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "Native host viewer download prepared for session jf9EsbiU"
+    },
+    {
+      "id": "CqWyQuAd7B",
+      "at": 1783796591326,
+      "action": "customer.socket.connected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "customer connected to secure signaling channel"
+    },
+    {
+      "id": "lftgluzmk9",
+      "at": 1783796591326,
+      "action": "ios.broadcast.connected.waiting_first_frame",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "iOS broadcast client connected; waiting for first screen.frame before marking session active."
+    },
+    {
+      "id": "GxpmxCgcqY",
+      "at": 1783796590753,
+      "action": "endpoint.joined",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "Endpoint joined session jf9EsbiU"
+    },
+    {
+      "id": "OMSXyfhILx",
+      "at": 1783796562922,
+      "action": "agent.socket.connected",
+      "actor": "system",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "agent connected to secure signaling channel"
+    },
+    {
+      "id": "scG8am1K7i",
+      "at": 1783796562148,
+      "action": "session.created",
+      "actor": "technician",
+      "sessionId": "jf9EsbiU",
+      "deviceId": null,
+      "message": "Session 94768400 created for browser guest"
+    },
+    {
+      "id": "YP5BUuO_Df",
+      "at": 1783796552538,
+      "action": "technician.global.connected",
+      "actor": "system",
+      "sessionId": null,
+      "deviceId": null,
+      "message": "Technician joined global updates channel"
+    }
+  ]
+}

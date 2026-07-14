@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Remote Support — Join Session</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* ScreenConnect-style Guest Page */
+    .guest-page {
+      min-height: 100vh;
+      color: #fff;
+      background: linear-gradient(180deg, #0b1321 0%, #101b2c 100%);
+      font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+    }
+
+    .guest-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 58px;
+      padding: 0 21px;
+      background: #101b2c;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .guest-header .brand-text {
+      font-size: 16px;
+      font-weight: 700;
+      color: #e0f0f0;
+    }
+
+    .guest-body {
+      display: grid;
+      place-items: center;
+      min-height: calc(100vh - 58px);
+      padding: 40px 16px;
+    }
+
+    /* Main content panels */
+    .guest-content {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* Action panels (ScreenConnect style) */
+    .action-panel {
+      text-align: center;
+      padding: 30px 0;
+    }
+
+    .action-panel h2 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      color: #fff;
+    }
+
+    .action-panel h2 em {
+      color: #48c6cc;
+      font-style: normal;
+    }
+
+    .action-panel .subtitle {
+      margin: 0 0 24px;
+      color: #9eb1c9;
+      font-size: 14px;
+    }
+
+    /* Code entry (ScreenConnect GoLink style) */
+    .code-entry {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+
+    .code-entry input {
+      flex: 1;
+      min-height: 52px;
+      border: 2px solid rgba(255,255,255,0.16);
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      padding: 0 16px;
+      color: #fff;
+      background: rgba(255,255,255,0.07);
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    .code-entry input:focus {
+      outline: 0;
+      border-color: #f5a524;
+      box-shadow: 0 0 0 4px rgba(245,165,36,0.16);
+      background: rgba(255,255,255,0.1);
+    }
+
+    .code-entry input::placeholder {
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0;
+      font-size: 15px;
+    }
+
+    .go-button {
+      display: grid;
+      place-items: center;
+      width: 56px;
+      min-height: 52px;
+      border: none;
+      border-radius: 0 8px 8px 0;
+      color: #101b2c;
+      background: #f5a524;
+      font-size: 24px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 10px 18px rgba(245,165,36,0.24);
+      transition: background 0.15s;
+    }
+
+    .go-button:hover {
+      background: #ffc04f;
+    }
+
+    .go-button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    /* Status message */
+    .status-message {
+      min-height: 24px;
+      margin-top: 14px;
+      text-align: center;
+      font-size: 13px;
+      color: #9eb1c9;
+    }
+
+    .status-message.error {
+      color: #ff6b6b;
+    }
+
+    .status-message.success {
+      color: #48c6cc;
+    }
+
+    /* Loading spinner */
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #f5a524;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ===== LAUNCHER PANEL (ScreenConnect JoinPanel style) ===== */
+    .launcher-panel {
+      max-width: 560px;
+      margin: 0 auto;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-top: 4px solid #f5a524;
+      border-radius: 10px;
+      background: rgba(16,27,44,0.96);
+      box-shadow: 0 24px 55px rgba(0,0,0,0.34);
+      overflow: hidden;
+    }
+
+    .launcher-header {
+      padding: 24px 28px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .launcher-header h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      color: #fff;
+    }
+
+    .launcher-header p {
+      margin: 0;
+      color: #8ea5c7;
+      font-size: 13px;
+    }
+
+    .launcher-body {
+      padding: 20px 28px 28px;
+    }
+
+    /* Platform launcher cards */
+    .launcher-option {
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .launcher-option:hover {
+      border-color: rgba(72,198,204,0.4);
+      background: rgba(72,198,204,0.08);
+    }
+
+    .launcher-option.detected {
+      border-color: rgba(245,165,36,0.5);
+      background: rgba(245,165,36,0.08);
+    }
+
+    .launcher-option.detected::after {
+      content: '';
+    }
+
+    .launcher-icon {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      font-size: 28px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .launcher-info h3 {
+      margin: 0 0 3px;
+      font-size: 15px;
+      color: #f7fbff;
+    }
+
+    .launcher-info p {
+      margin: 0;
+      color: #8ea5c7;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .launcher-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .launcher-badge.recommended {
+      color: #101b2c;
+      background: #f5a524;
+    }
+
+    .launcher-badge.available {
+      color: #48c6cc;
+      background: rgba(72,198,204,0.15);
+      border: 1px solid rgba(72,198,204,0.3);
+    }
+
+    .launcher-action {
+      min-width: 100px;
+      min-height: 36px;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      background: #087f8c;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(8,127,140,0.2);
+    }
+
+    .launcher-action:hover {
+      background: #05606b;
+    }
+
+    .launcher-action.primary {
+      background: #f5a524;
+      color: #101b2c;
+      box-shadow: 0 8px 16px rgba(245,165,36,0.2);
+    }
+
+    .launcher-action.primary:hover {
+      background: #ffc04f;
+    }
+
+    /* ===== DOWNLOAD PROGRESS PANEL ===== */
+    .download-progress {
+      padding: 24px 28px;
+    }
+
+    .download-progress h2 {
+      margin: 0 0 20px;
+      font-size: 18px;
+      color: #fff;
+    }
+
+    .step-list {
+      counter-reset: step-counter;
+    }
+
+    .step-item {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      padding: 14px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .step-item:last-child {
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .step-number {
+      counter-increment: step-counter;
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      color: #101b2c;
+      background: #f5a524;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .step-number.done {
+      background: #48c6cc;
+    }
+
+    .step-number.active {
+      background: #f5a524;
+      animation: pulse 1.5s ease infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,165,36,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(245,165,36,0); }
+    }
+
+    .step-text {
+      padding-top: 3px;
+    }
+
+    .step-text strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #f7fbff;
+      font-size: 14px;
+    }
+
+    .step-text p {
+      margin: 0;
+      color: #8ea5c7;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    /* Connected state */
+    .connected-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      background: rgba(20,110,67,0.2);
+      border: 1px solid rgba(72,198,204,0.3);
+    }
+
+    .connected-banner .icon {
+      font-size: 24px;
+    }
+
+    .connected-banner strong {
+      color: #8ff2bb;
+      font-size: 15px;
+    }
+
+    .connected-banner p {
+      margin: 4px 0 0;
+      color: #9eb1c9;
+      font-size: 12px;
+    }
+
+    /* Help links */
+    .help-links {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      text-align: center;
+    }
+
+    .help-links a {
+      color: #48c6cc;
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .help-links a:hover {
+      text-decoration: underline;
+    }
+
+    /* Retry / alternative download */
+    .alt-downloads {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .alt-downloads button {
+      padding: 6px 14px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      color: #48c6cc;
+      background: transparent;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .alt-downloads button:hover {
+      background: rgba(72,198,204,0.1);
+    }
+
+    /* Mobile-specific styles */
+    @media (max-width: 520px) {
+      .guest-body {
+        padding: 24px 12px;
+      }
+
+      .launcher-panel {
+        margin: 0 -4px;
+      }
+
+      .launcher-header,
+      .launcher-body,
+      .download-progress {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+
+      .launcher-option {
+        grid-template-columns: 40px 1fr;
+        gap: 10px;
+      }
+
+      .launcher-option .launcher-action {
+        grid-column: 1 / -1;
+        width: 100%;
+      }
+
+      .code-entry input {
+        font-size: 18px;
+        min-height: 48px;
+      }
+
+      .go-button {
+        min-height: 48px;
+        width: 48px;
+      }
+    }
+  </style>
+</head>
+<body class="guest-page">
+  <header class="guest-header">
+    <span class="screenconnect-mark small"></span>
+    <span class="brand-text">Remote Support</span>
+  </header>
+
+  <div class="guest-body">
+    <div class="guest-content">
+
+      <!-- STATE 1: Code Entry (ScreenConnect Guest Action Panel) -->
+      <div id="codePanel" class="action-panel">
+        <h2><em>Join</em> your session</h2>
+        <p class="subtitle">Enter the support code provided by your technician</p>
+
+        <div class="code-entry">
+          <input
+            id="codeInput"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            placeholder="Enter code"
+            maxlength="12"
+            autofocus
+          >
+          <button id="goButton" class="go-button" title="Join" disabled>▶</button>
+        </div>
+
+        <div id="codeStatus" class="status-message"></div>
+      </div>
+
+      <!-- STATE 2: Platform Launcher Selection -->
+      <div id="launcherPanel" class="launcher-panel" hidden>
+        <div class="launcher-header">
+          <h1 id="launcherTitle">Joining your session</h1>
+          <p id="launcherSubtitle">Select the best way to connect from your device</p>
+        </div>
+        <div class="launcher-body">
+          <div id="launcherOptions"></div>
+          <div class="help-links">
+            <a href="#" id="troubleshootLink">Having trouble connecting?</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATE 3: Download/Connection Progress -->
+      <div id="progressPanel" class="launcher-panel" hidden>
+        <div class="download-progress">
+          <h2 id="progressTitle">Connecting...</h2>
+          <div id="progressSteps" class="step-list"></div>
+          <div id="altDownloads" class="alt-downloads" hidden></div>
+          <div class="help-links">
+            <a href="#" id="retryLink">Try a different connection method</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATE 4: Connected -->
+      <div id="connectedPanel" class="launcher-panel" hidden>
+        <div class="download-progress">
+          <div class="connected-banner">
+            <span class="icon">✅</span>
+            <div>
+              <strong>You have successfully connected to your session.</strong>
+              <p>Your technician can now see your screen. You can close this browser tab.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // ===== Platform Detection (ScreenConnect style) =====
+      function detectPlatform() {
+        const ua = navigator.userAgent || navigator.vendor || '';
+        if (/iPad/.test(ua)) return 'ipad';
+        if (/iPhone|iPod/.test(ua) && !window.MSStream) return 'iphone';
+        if (/android/i.test(ua)) return 'android';
+        if (/Macintosh|Mac OS X/.test(ua)) return 'macos';
+        if (/Windows/.test(ua)) return 'windows';
+        if (/Linux/.test(ua)) return 'linux';
+        return 'unknown';
+      }
+
+      function platformLabel(p) {
+        const map = {
+          windows: 'Windows',
+          macos: 'macOS',
+          android: 'Android',
+          iphone: 'iPhone / iOS',
+          ipad: 'iPad',
+          linux: 'Linux',
+          unknown: 'Web Browser'
+        };
+        return map[p] || p;
+      }
+
+      function platformIcon(p) {
+        const map = {
+          windows: '🖥️',
+          macos: '🍎',
+          android: '🤖',
+          iphone: '📱',
+          ipad: '📱',
+          linux: '🐧',
+          unknown: '🌐'
+        };
+        return map[p] || '🌐';
+      }
+
+      const platform = detectPlatform();
+
+      // ===== DOM Elements =====
+      const codePanel = document.getElementById('codePanel');
+      const codeInput = document.getElementById('codeInput');
+      const goButton = document.getElementById('goButton');
+      const codeStatus = document.getElementById('codeStatus');
+      const launcherPanel = document.getElementById('launcherPanel');
+      const launcherTitle = document.getElementById('launcherTitle');
+      const launcherSubtitle = document.getElementById('launcherSubtitle');
+      const launcherOptions = document.getElementById('launcherOptions');
+      const progressPanel = document.getElementById('progressPanel');
+      const progressTitle = document.getElementById('progressTitle');
+      const progressSteps = document.getElementById('progressSteps');
+      const altDownloads = document.getElementById('altDownloads');
+      const connectedPanel = document.getElementById('connectedPanel');
+      const retryLink = document.getElementById('retryLink');
+      const troubleshootLink = document.getElementById('troubleshootLink');
+
+      let sessionData = null;
+      let joinCode = '';
+      let pollingTimer = null;
+
+      // ===== Code Input Logic =====
+      codeInput.addEventListener('input', function() {
+        const val = this.value.replace(/\D/g, '').slice(0, 12);
+        this.value = val;
+        goButton.disabled = val.length < 4;
+      });
+
+      codeInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !goButton.disabled) {
+          e.preventDefault();
+          joinSession();
+        }
+      });
+
+      goButton.addEventListener('click', function() {
+        if (!goButton.disabled) joinSession();
+      });
+
+      retryLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        showLaunchers();
+      });
+
+      troubleshootLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (sessionData) {
+          // Open browser-based connection as fallback
+          launchBrowser();
+        }
+      });
+
+      // ===== Check URL for code parameter =====
+      function checkUrlCode() {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code') || params.get('Code') || '';
+        if (code) {
+          codeInput.value = code.replace(/\D/g, '').slice(0, 12);
+          goButton.disabled = codeInput.value.length < 4;
+          if (!goButton.disabled) {
+            setTimeout(joinSession, 500);
+          }
+        }
+      }
+
+      // ===== Join Session (validate code) =====
+      async function joinSession() {
+        joinCode = codeInput.value.trim();
+        if (!joinCode) return;
+
+        goButton.disabled = true;
+        codeStatus.className = 'status-message';
+        codeStatus.innerHTML = '<span class="loading-spinner"></span> Validating code...';
+
+        try {
+          const resp = await fetch('/api/session/' + encodeURIComponent(joinCode) + '/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              platform: platform,
+              os: platform,
+              capabilities: {
+                browserShare: true,
+                nativeInstall: platform === 'windows',
+                screenCapture: platform !== 'iphone' && platform !== 'ipad',
+                mobileAppBroadcast: platform === 'iphone' || platform === 'ipad' || platform === 'android'
+              }
+            })
+          });
+
+          if (resp.status === 428) {
+            // Permanent access authorization required
+            const data = await resp.json();
+            sessionData = data;
+            codeStatus.className = 'status-message';
+            codeStatus.textContent = '';
+            showLaunchers();
+            return;
+          }
+
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            codeStatus.className = 'status-message error';
+            codeStatus.textContent = err.message || 'Session not found. Check your code and try again.';
+            goButton.disabled = false;
+            return;
+          }
+
+          sessionData = await resp.json();
+          codeStatus.className = 'status-message success';
+          codeStatus.textContent = 'Session found!';
+
+          // Show platform launchers
+          setTimeout(showLaunchers, 400);
+
+        } catch (err) {
+          codeStatus.className = 'status-message error';
+          codeStatus.textContent = 'Connection error. Please check your internet and try again.';
+          goButton.disabled = false;
+        }
+      }
+
+      // ===== Show Platform Launchers (ScreenConnect JoinPanel style) =====
+      function showLaunchers() {
+        codePanel.hidden = true;
+        progressPanel.hidden = true;
+        connectedPanel.hidden = true;
+        launcherPanel.hidden = false;
+
+        launcherTitle.textContent = 'Join your session';
+        launcherSubtitle.textContent = 'Choose how to connect from your ' + platformLabel(platform);
+
+        const launchers = buildLauncherList();
+        launcherOptions.innerHTML = '';
+
+        launchers.forEach(function(launcher) {
+          const div = document.createElement('div');
+          div.className = 'launcher-option' + (launcher.detected ? ' detected' : '');
+          div.innerHTML =
+            '<div class="launcher-icon">' + launcher.icon + '</div>' +
+            '<div class="launcher-info">' +
+              '<h3>' + launcher.title + '</h3>' +
+              '<p>' + launcher.description + '</p>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+              (launcher.detected ? '<span class="launcher-badge recommended">Recommended</span>' : '<span class="launcher-badge available">Available</span>') +
+            '</div>';
+          div.addEventListener('click', function() {
+            launcher.action();
+          });
+          launcherOptions.appendChild(div);
+        });
+      }
+
+      // ===== Build Launcher List Per Platform =====
+      function buildLauncherList() {
+        const launchers = [];
+        const isDesktop = platform === 'windows' || platform === 'macos' || platform === 'linux';
+        const isMobile = platform === 'iphone' || platform === 'ipad' || platform === 'android';
+        const isIos = platform === 'iphone' || platform === 'ipad';
+        const hasNativeDownload = sessionData && sessionData.downloadUrl;
+
+        // ---- WINDOWS ----
+        if (platform === 'windows') {
+          if (hasNativeDownload) {
+            launchers.push({
+              icon: '💻',
+              title: 'Windows Desktop App',
+              description: 'Download and run the support client for full remote control, file transfer, and screen recording.',
+              detected: true,
+              action: launchWindowsExe
+            });
+          }
+          launchers.push({
+            icon: '🌐',
+            title: 'Web Browser',
+            description: 'Share your screen directly from this browser. No download required.',
+            detected: !hasNativeDownload,
+            action: launchBrowser
+          });
+        }
+
+        // ---- macOS ----
+        else if (platform === 'macos') {
+          launchers.push({
+            icon: '🌐',
+            title: 'Web Browser',
+            description: 'Share your screen directly from Safari or Chrome. No download required.',
+            detected: true,
+            action: launchBrowser
+          });
+          if (hasNativeDownload) {
+            launchers.push({
+              icon: '🍎',
+              title: 'macOS Desktop App',
+              description: 'Download the macOS support client for advanced features.',
+              detected: false,
+              action: launchMacApp
+            });
+          }
+        }
+
+        // ---- Android ----
+        else if (platform === 'android') {
+          launchers.push({
+            icon: '📱',
+            title: 'Mobile App',
+            description: 'Install or launch the support app from Google Play for full screen sharing with MediaProjection.',
+            detected: true,
+            action: launchAndroidApp
+          });
+          launchers.push({
+            icon: '🌐',
+            title: 'Web Browser',
+            description: 'Share your screen from Chrome. Some features may be limited on mobile browsers.',
+            detected: false,
+            action: launchBrowser
+          });
+        }
+
+        // ---- iPhone / iPad ----
+        else if (isIos) {
+          launchers.push({
+            icon: '📱',
+            title: 'iOS App (Required)',
+            description: 'iPhone/iPad requires the native app with Apple Screen Broadcast for full screen sharing.',
+            detected: true,
+            action: launchIosApp
+          });
+          launchers.push({
+            icon: '🌐',
+            title: 'Web Browser (Limited)',
+            description: 'iOS browsers cannot capture the full device screen. Use the app for complete support.',
+            detected: false,
+            action: launchBrowser
+          });
+        }
+
+        // ---- Linux / Unknown ----
+        else {
+          launchers.push({
+            icon: '🌐',
+            title: 'Web Browser',
+            description: 'Share your screen directly from this browser using WebRTC.',
+            detected: true,
+            action: launchBrowser
+          });
+        }
+
+        return launchers;
+      }
+
+      // ===== Windows .exe Download & Launch =====
+      function launchWindowsExe() {
+        showProgress('Downloading Windows Client', [
+          { num: '1', title: 'Download the support client', text: 'Your browser will download the setup file. Click the download or run it from your browser.', active: true },
+          { num: '2', title: 'Run the downloaded file', text: 'Windows may show a SmartScreen warning. Click "More info" then "Run anyway" to proceed.' },
+          { num: '3', title: 'Connected!', text: 'The support client will connect automatically. Your technician will see your screen.' }
+        ]);
+
+        // Trigger download
+        if (sessionData && sessionData.downloadUrl) {
+          setTimeout(function() {
+            window.location.href = sessionData.downloadUrl;
+          }, 800);
+        }
+
+        // Show alternate downloads
+        altDownloads.hidden = false;
+        altDownloads.innerHTML = '';
+
+        if (sessionData && sessionData.msiUrl) {
+          const msiBtn = document.createElement('button');
+          msiBtn.textContent = 'Download .msi installer';
+          msiBtn.addEventListener('click', function() { window.location.href = sessionData.msiUrl; });
+          altDownloads.appendChild(msiBtn);
+        }
+
+        const browserBtn = document.createElement('button');
+        browserBtn.textContent = 'Use browser instead';
+        browserBtn.addEventListener('click', launchBrowser);
+        altDownloads.appendChild(browserBtn);
+
+        // Poll for connection status
+        startConnectionPolling();
+      }
+
+      // ===== macOS App Download =====
+      function launchMacApp() {
+        showProgress('Downloading macOS Client', [
+          { num: '1', title: 'Download the support client', text: 'Your browser will download a .zip file. Open it from your Downloads folder.', active: true },
+          { num: '2', title: 'Open the app', text: 'Double-click the app in the Finder window. You may need to allow it in System Preferences > Security.' },
+          { num: '3', title: 'Grant permissions', text: 'macOS will ask for Screen Recording permission. Allow it in System Preferences > Privacy > Screen Recording.' }
+        ]);
+
+        if (sessionData && sessionData.downloadUrl) {
+          setTimeout(function() {
+            window.location.href = sessionData.downloadUrl;
+          }, 800);
+        }
+
+        altDownloads.hidden = false;
+        altDownloads.innerHTML = '';
+        const browserBtn = document.createElement('button');
+        browserBtn.textContent = 'Use browser instead';
+        browserBtn.addEventListener('click', launchBrowser);
+        altDownloads.appendChild(browserBtn);
+
+        startConnectionPolling();
+      }
+
+      // ===== Android App Launch =====
+      function launchAndroidApp() {
+        const mobileSupport = sessionData && sessionData.mobileSupport;
+        const deepLink = mobileSupport && mobileSupport.deepLink;
+        const installUrl = mobileSupport && mobileSupport.installUrl;
+        const playStoreUrl = installUrl || 'https://play.google.com/store/search?q=remote+support';
+
+        showProgress('Connecting via Android App', [
+          { num: '1', title: 'Launch or install the app', text: 'If you have the app installed, it will open automatically. Otherwise, use browser screen sharing below.', active: true },
+          { num: '2', title: 'Enter the session code', text: 'In the app, enter the server URL and code: ' + (joinCode || ''), },
+          { num: '3', title: 'Start screen sharing', text: 'Tap "Start" and approve the Android screen capture permission when prompted.' }
+        ]);
+
+        // Try deep link first, fallback to browser sharing
+        if (deepLink) {
+          try {
+            window.open(deepLink, '_blank', 'noopener');
+          } catch (e) {
+            // Deep link failed, will use browser fallback
+          }
+
+          // After a short delay, if we're still on this page, suggest browser fallback
+          setTimeout(function() {
+            if (!document.hidden) {
+              showProgress('Connecting via Android App', [
+                { num: '1', title: 'App not found?', text: 'If the app did not open, use "Share screen in browser" below or install the app from Google Play.', active: true },
+                { num: '2', title: 'Enter the session code', text: 'In the app, enter the server URL and code: ' + (joinCode || '') },
+                { num: '3', title: 'Start screen sharing', text: 'Tap "Start" and approve the Android screen capture permission when prompted.' }
+              ]);
+            }
+          }, 2500);
+        }
+
+        altDownloads.hidden = false;
+        altDownloads.innerHTML = '';
+
+        // Prioritize browser sharing as the primary fallback
+        var browserBtn = document.createElement('button');
+        browserBtn.textContent = 'Share screen in browser';
+        browserBtn.addEventListener('click', launchBrowser);
+        altDownloads.appendChild(browserBtn);
+
+        if (playStoreUrl) {
+          var storeBtn = document.createElement('button');
+          storeBtn.textContent = 'Open Google Play Store';
+          storeBtn.addEventListener('click', function() { window.open(playStoreUrl, '_blank'); });
+          altDownloads.appendChild(storeBtn);
+        }
+
+        startConnectionPolling();
+      }
+
+      // ===== iOS App Launch =====
+      function launchIosApp() {
+        const mobileSupport = sessionData && sessionData.mobileSupport;
+        const deepLink = mobileSupport && mobileSupport.deepLink;
+        const installUrl = mobileSupport && mobileSupport.installUrl;
+        const appStoreUrl = installUrl || 'https://apps.apple.com/search?term=remote+support';
+        const appInstructions = mobileSupport && mobileSupport.appInstructions;
+
+        showProgress('Connecting via iOS App', [
+          { num: '1', title: 'Install or launch the app', text: 'Download the support app from the App Store if you haven\'t already.', active: true },
+          { num: '2', title: 'Enter the session code', text: appInstructions || ('Open the app, enter the server URL and code: ' + (joinCode || '')) },
+          { num: '3', title: 'Start Screen Broadcast', text: 'Tap "Start Broadcast" in the Apple broadcast picker. This enables full device screen sharing via ReplayKit.' }
+        ]);
+
+        // Try deep link first, fallback to App Store
+        if (deepLink) {
+          setTimeout(function() {
+            window.location.href = deepLink;
+          }, 300);
+
+          // Fallback to App Store after timeout
+          setTimeout(function() {
+            window.location.href = appStoreUrl;
+          }, 3000);
+        } else {
+          window.open(appStoreUrl, '_blank');
+        }
+
+        altDownloads.hidden = false;
+        altDownloads.innerHTML = '';
+
+        const storeBtn = document.createElement('button');
+        storeBtn.textContent = 'Open App Store';
+        storeBtn.addEventListener('click', function() { window.open(appStoreUrl, '_blank'); });
+        altDownloads.appendChild(storeBtn);
+
+        const browserBtn = document.createElement('button');
+        browserBtn.textContent = 'Use browser (limited)';
+        browserBtn.addEventListener('click', launchBrowser);
+        altDownloads.appendChild(browserBtn);
+
+        startConnectionPolling();
+      }
+
+      // ===== Browser-based Connection =====
+      function launchBrowser() {
+        // Redirect to the customer page with the code
+        const code = joinCode || codeInput.value.trim();
+        if (code) {
+          window.location.href = '/customer?code=' + encodeURIComponent(code);
+        } else {
+          window.location.href = '/customer';
+        }
+      }
+
+      // ===== Show Progress Steps =====
+      function showProgress(title, steps) {
+        codePanel.hidden = true;
+        launcherPanel.hidden = true;
+        connectedPanel.hidden = true;
+        progressPanel.hidden = false;
+
+        progressTitle.textContent = title;
+        progressSteps.innerHTML = '';
+
+        steps.forEach(function(step) {
+          const div = document.createElement('div');
+          div.className = 'step-item';
+          div.innerHTML =
+            '<div class="step-number' + (step.active ? ' active' : '') + '">' + step.num + '</div>' +
+            '<div class="step-text">' +
+              '<strong>' + step.title + '</strong>' +
+              '<p>' + step.text + '</p>' +
+            '</div>';
+          progressSteps.appendChild(div);
+        });
+
+        altDownloads.hidden = true;
+        altDownloads.innerHTML = '';
+      }
+
+      // ===== Poll for Connection Status =====
+      function startConnectionPolling() {
+        if (pollingTimer) clearInterval(pollingTimer);
+        if (!sessionData || !sessionData.sessionId) return;
+
+        const token = sessionData.customerJoinToken;
+        const sessionId = sessionData.sessionId;
+
+        pollingTimer = setInterval(async function() {
+          try {
+            const resp = await fetch('/api/session/' + encodeURIComponent(sessionId) + '/customer-status?token=' + encodeURIComponent(token));
+            if (!resp.ok) return;
+            const status = await resp.json();
+
+            if (status.nativeConnected || status.screenStreaming) {
+              clearInterval(pollingTimer);
+              pollingTimer = null;
+              showConnected();
+            }
+          } catch (e) {
+            // Ignore polling errors
+          }
+        }, 3000);
+      }
+
+      // ===== Show Connected State =====
+      function showConnected() {
+        codePanel.hidden = true;
+        launcherPanel.hidden = true;
+        progressPanel.hidden = true;
+        connectedPanel.hidden = false;
+      }
+
+      // ===== Initialize =====
+      checkUrlCode();
+
+    })();
+  </script>
+</body>
+</html>

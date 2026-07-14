@@ -1,0 +1,21 @@
+[Unit]
+Description=Remote Support Web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/remotesupport-web
+EnvironmentFile=/etc/remotesupport-web.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+User=remotesupport
+Group=remotesupport
+
+# Basic hardening. The app keeps writable state under /opt/remotesupport-web/data.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

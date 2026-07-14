@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Download Remote Support App</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+      .mobile-download-page {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .download-container {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        max-width: 600px;
+        width: 100%;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      }
+      .download-header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .download-header h1 {
+        color: #333;
+        font-size: 2em;
+        margin-bottom: 10px;
+      }
+      .download-header p {
+        color: #666;
+        font-size: 1.1em;
+      }
+      .platform-detected {
+        background: #e3f2fd;
+        border-left: 4px solid #2196f3;
+        padding: 15px;
+        margin-bottom: 30px;
+        border-radius: 8px;
+      }
+      .platform-detected strong {
+        color: #1976d2;
+      }
+      .app-options {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        margin-bottom: 30px;
+      }
+      .app-button {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 20px;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        text-decoration: none;
+        color: #333;
+        transition: all 0.3s ease;
+      }
+      .app-button:hover {
+        border-color: #667eea;
+        background: #f5f5f5;
+        transform: translateY(-2px);
+      }
+      .app-button.recommended {
+        border-color: #4 caf50;
+        background: #f1f8e9;
+      }
+      .app-button.recommended:hover {
+        background: #e8f5e9;
+      }
+      .app-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        background: #667eea;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+      }
+      .app-info {
+        flex: 1;
+      }
+      .app-info h3 {
+        margin: 0 0 5px 0;
+        font-size: 1.2em;
+        color: #333;
+      }
+      .app-info p {
+        margin: 0;
+        color: #666;
+        font-size: 0.9em;
+      }
+      .app-badge {
+        background: #ff9800;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        font-weight: bold;
+      }
+      .qr-section {
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 30px;
+        border-top: 1px solid #e0e0e0;
+      }
+      .qr-section h3 {
+        margin-bottom: 15px;
+        color: #333;
+      }
+      .qr-container {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        display: inline-block;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      }
+      .qr-placeholder {
+        width: 200px;
+        height: 200px;
+        background: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #999;
+        font-size: 0.9em;
+      }
+      .instructions {
+        margin-top: 20px;
+        text-align: left;
+      }
+      .instructions h4 {
+        margin-bottom: 10px;
+        color: #333;
+      }
+      .instructions ol {
+        padding-left: 20px;
+        color: #666;
+        line-height: 1.8;
+      }
+      .footer {
+        margin-top: 30px;
+        text-align: center;
+        color: #666;
+        font-size: 0.9em;
+      }
+      .footer a {
+        color: #667eea;
+        text-decoration: none;
+      }
+      .session-info {
+        margin-top: 20px;
+        padding: 15px;
+        background: #fff3e0;
+        border-radius: 8px;
+        font-size: 0.9em;
+      }
+      .session-info strong {
+        display: block;
+        margin-bottom: 5px;
+        color: #e65100;
+      }
+      @media (max-width: 768px) {
+        .download-container {
+          padding: 25px;
+        }
+        .app-button {
+          padding: 15px;
+        }
+        .app-icon {
+          width: 50px;
+          height: 50px;
+        }
+      }
+    </style>
+  <script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+  <body class="mobile-download-page">
+    <div class="download-container">
+      <div class="download-header">
+        <h1>Remote Support App</h1>
+        <p>Download the mobile app for your session</p>
+      </div>
+
+      <div class="platform-detected" id="platformDetected">
+        <strong>Platform Detected:</strong> <span id="platformName">Detecting...</span>
+      </div>
+
+      <div id="sessionInfo" class="session-info" style="display: none;">
+        <strong>Session Information:</strong>
+        <div>Session ID: <span id="sessionId">-</span></div>
+        <div>Token: <span id="sessionToken">-</span></div>
+      </div>
+
+      <div class="app-options">
+        <a href="#" id="iosAppLink" class="app-button" target="_blank">
+          <div class="app-icon"></div>
+          <div class="app-info">
+            <h3>iOS App</h3>
+            <p>Download from App Store</p>
+          </div>
+          <span class="app-badge" style="background: #007AFF;">iOS</span>
+        </a>
+
+        <a href="#" id="androidAppLink" class="app-button" target="_blank">
+          <div class="app-icon">🤖</div>
+          <div class="app-info">
+            <h3>Android App</h3>
+            <p>Download from Google Play</p>
+          </div>
+          <span class="app-badge" style="background: #4CAF50;">Android</span>
+        </a>
+      </div>
+
+      <div class="qr-section">
+        <h3>Scan QR Code to Download</h3>
+        <div class="qr-container">
+          <div class="qr-placeholder" id="qrCode">QR Code will appear here</div>
+        </div>
+      </div>
+
+      <div class="instructions">
+        <h4>Quick Start Instructions:</h4>
+        <ol>
+          <li>Download the app for your device</li>
+          <li>Open the app and enter your session code</li>
+          <li>Grant screen sharing permissions when prompted</li>
+          <li>Your technician will connect automatically</li>
+        </ol>
+      </div>
+
+      <div class="footer">
+        <p>Need help? Contact your technician or <a href="/customer">return to web session</a></p>
+      </div>
+    </div>
+
+    <script type="module">
+      // Detect platform
+      const platform = detectPlatform();
+      const platformName = document.getElementById('platformName');
+      const platformDetected = document.getElementById('platformDetected');
+      
+      // Set platform-specific links (these would be configured in production)
+      const IOS_APP_URL = 'https://apps.apple.com/us/app/connectwise-control/id423995707';
+      const ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.screenconnect.androidclient';
+
+      document.getElementById('iosAppLink').href = IOS_APP_URL;
+      document.getElementById('androidAppLink').href = ANDROID_APP_URL;
+
+      function detectPlatform() {
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        
+        if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+          return 'ios';
+        }
+        
+        if (/android/i.test(userAgent)) {
+          return 'android';
+        }
+        
+        if (/Macintosh|Mac OS X/.test(userAgent)) {
+          return 'mac';
+        }
+        
+        if (/Windows/.test(userAgent)) {
+          return 'windows';
+        }
+        
+        return 'unknown';
+      }
+
+      function updatePlatformUI() {
+        const platformButtons = document.querySelectorAll('.app-button');
+        
+        switch(platform) {
+          case 'ios':
+            platformName.textContent = 'iOS (iPhone/iPad)';
+            document.getElementById('iosAppLink').classList.add('recommended');
+            document.getElementById('androidAppLink').style.opacity = '0.5';
+            break;
+          case 'android':
+            platformName.textContent = 'Android';
+            document.getElementById('androidAppLink').classList.add('recommended');
+            document.getElementById('iosAppLink').style.opacity = '0.5';
+            break;
+          case 'mac':
+            platformName.textContent = 'macOS (Desktop)';
+            break;
+          case 'windows':
+            platformName.textContent = 'Windows (Desktop)';
+            break;
+          default:
+            platformName.textContent = 'Unknown platform';
+        }
+      }
+
+      // Check for session parameters in URL
+      function checkSessionParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('sessionId');
+        const token = urlParams.get('token');
+
+        if (sessionId && token) {
+          document.getElementById('sessionInfo').style.display = 'block';
+          document.getElementById('sessionId').textContent = sessionId;
+          document.getElementById('sessionToken').textContent = token.substring(0, 8) + '...';
+          
+          // Could generate QR code here with session data
+          generateQRCode(sessionId, token);
+        }
+      }
+
+      // Generate QR code (placeholder - would use QR code library in production)
+      function generateQRCode(sessionId, token) {
+        const qrContainer = document.getElementById('qrCode');
+        qrContainer.innerHTML = `
+          <div style="text-align: center; padding: 20px;">
+            <p style="font-size: 0.9em; margin-bottom: 10px;">Session QR Code</p>
+            <p style="font-size: 0.8em; color: #666;">Session: ${sessionId.substring(0, 8)}...</p>
+            <div style="font-size: 0.8em; margin-top: 10px;">
+              Scan to download app<br>and join session
+            </div>
+          </div>
+        `;
+      }
+
+      // Initialize
+      updatePlatformUI();
+      checkSessionParams();
+
+      // Expose function for potential use by other pages
+      window.MobileDownload = {
+        detectPlatform,
+        generateQRCode
+      };
+    </script>
+  </body>
+</html>

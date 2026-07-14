@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote Support - View Only</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+
+  <body class="host-client-page">
+    <main class="remote-window">
+      <header class="remote-title">
+        <strong id="remoteTitle">View Only</strong>
+        <span>Screen display (no input relay)</span>
+      </header>
+
+
+      <section style="padding: 10px 14px; color: #b00; font-weight: 600;">
+        Technician note: This page is view-only. Open <b>host-client.html</b> to enable keyboard/mouse control.
+      </section>
+
+      <section class="remote-screen" id="remoteScreen" tabindex="-1">
+
+        <img id="remoteFrame" alt="Remote customer screen" hidden draggable="false" />
+        <div id="remoteEmpty" class="remote-empty"></div>
+      </section>
+
+      <section class="remote-status">
+        <h2>Status</h2>
+        <strong id="remoteStatus">Connecting...</strong>
+        <p id="remoteStatusMessage">Waiting for the technician to open this viewer.</p>
+      </section>
+    </main>
+
+    <script src="/viewer-only.js" type="module"></script>
+  </body>
+</html>
+

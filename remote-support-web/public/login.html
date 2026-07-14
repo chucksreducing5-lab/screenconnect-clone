@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote Support — Login</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+
+<div class="login-card">
+  <!-- Logo -->
+  <div class="login-logo">
+    <div class="ll-mark">S</div>
+    <h1>Remote Support</h1>
+  </div>
+
+  <h2 class="login-heading">Access your account</h2>
+  <p class="login-sub">Sign in to manage remote support sessions.</p>
+
+  <!-- Error message -->
+  <div class="login-error" id="loginError">Invalid credentials. Please try again.</div>
+
+  <form class="login-form" id="loginForm" autocomplete="on">
+
+    <div class="form-field">
+      <label for="username">User Name</label>
+      <input type="text" id="username" name="username" placeholder="Username"
+             autocomplete="username" required autofocus>
+    </div>
+
+    <div class="form-field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="Password"
+             autocomplete="current-password" required>
+    </div>
+
+    <div class="login-options">
+      <label>
+        <input type="checkbox" id="rememberMe"> Keep me signed in
+      </label>
+      <a href="#" id="forgotPasswordLink">Forgot password?</a>
+    </div>
+
+    <!-- OTP section (shown when 2FA is required) -->
+    <div class="otp-section" id="otpSection">
+      <div style="height:1px;background:var(--sc-border);"></div>
+      <p class="otp-info">Your account requires an additional authentication step.</p>
+      <div class="form-field">
+        <label for="otpCode">One-Time Password</label>
+        <input type="text" id="otpCode" class="otp-input" name="otp"
+               placeholder="000000" maxlength="8" autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9]*">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sc-text-dim);cursor:pointer;">
+        <input type="checkbox" id="trustDevice"> Trust this device for 30 days
+      </label>
+    </div>
+
+    <button type="submit" class="login-submit" id="loginBtn">Login</button>
+
+  </form>
+
+  <!-- Divider for SSO options (optional) -->
+  <div style="margin-top:16px;">
+    <div class="login-divider">Or sign in with</div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;" id="ssoButtons">
+      <!-- SSO buttons injected by JS if configured -->
+    </div>
+  </div>
+</div>
+
+<!-- Forgot password panel -->
+<div class="sc-modal-overlay" id="forgotModal" style="display:none;">
+  <div class="sc-modal" style="max-width:360px;">
+    <button class="modal-close" id="closeForgot">✕</button>
+    <h3>Reset Password</h3>
+    <p style="font-size:13px;color:var(--sc-text-dim);margin-bottom:16px;">
+      Enter your user name. We will send you instructions to reset your password.
+    </p>
+    <div class="modal-form">
+      <div class="mf-row">
+        <label>User Name</label>
+        <input id="resetUsername" placeholder="Enter your username">
+      </div>
+    </div>
+    <div id="forgotSuccess" style="display:none;color:var(--sc-success);font-size:13px;margin-top:8px;">
+      ✓ If that username exists, reset instructions have been sent.
+    </div>
+    <div class="modal-footer">
+      <button class="sc-btn secondary sm" id="closeForgot2">Cancel</button>
+      <button class="sc-btn sm" id="btnSendReset">Send Reset Code</button>
+    </div>
+  </div>
+</div>
+
+<div class="sc-toast-container" id="toastContainer"></div>
+
+<style>
+body.login-page { overflow: auto; }
+</style>
+
+<script>
+(function() {
+  'use strict';
+
+  const form = document.getElementById('loginForm');
+  const errorEl = document.getElementById('loginError');
+  const otpSection = document.getElementById('otpSection');
+  const loginBtn = document.getElementById('loginBtn');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('visible');
+  }
+  function hideError() {
+    errorEl.classList.remove('visible');
+  }
+  function showToast(msg, type = 'info') {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = `sc-toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // Get redirect URL from query string
+  function getReturnUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ReturnUrl') || '/';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError();
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing in...';
+
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const otp = document.getElementById('otpCode').value.trim();
+    const trust = document.getElementById('trustDevice').checked;
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, otp: otp || undefined, trust })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        window.location.href = getReturnUrl();
+        return;
+      }
+
+      if (data.requireOtp) {
+        otpSection.classList.add('visible');
+        document.getElementById('otpCode').focus();
+        showError('Your account requires an additional authentication step. Enter your OTP below.');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
+        return;
+      }
+
+      // Show appropriate error message
+      const msgs = {
+        'UserNameInvalid':    'Invalid user name. Please try again.',
+        'PasswordInvalid':    'Invalid credentials. Please try again.',
+        'LockedOut':          'Too many incorrect attempts. You have been locked out.',
+        'OtpInvalid':         'Invalid one-time password. Please try again.',
+        'OtpRequired':        'One-time password is required.',
+        'AccessPolicyViolated': 'Access denied by policy. Contact your administrator.',
+        'PasswordExpired':    'Your password has expired. Please contact your administrator.'
+      };
+      showError(msgs[data.errorCode] || data.message || 'Login failed. Please try again.');
+
+    } catch (err) {
+      showError('Network error. Please check your connection and try again.');
+    }
+
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Login';
+  });
+
+  // Forgot password flow
+  document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('forgotModal').style.display = 'flex';
+  });
+  ['closeForgot', 'closeForgot2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => {
+      document.getElementById('forgotModal').style.display = 'none';
+    });
+  });
+  document.getElementById('btnSendReset').addEventListener('click', async () => {
+    const uname = document.getElementById('resetUsername').value.trim();
+    if (!uname) return;
+    try {
+      await fetch('/api/auth/reset-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: uname })
+      });
+    } catch {}
+    document.getElementById('forgotSuccess').style.display = 'block';
+    document.getElementById('btnSendReset').disabled = true;
+  });
+
+  // Pre-fill username if redirected with ?UserName=
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('UserName')) {
+    document.getElementById('username').value = params.get('UserName');
+    document.getElementById('password').focus();
+  }
+
+  // Show login reason message if present
+  const reasonMsgs = {
+    'Expired':      'Your session has expired. Please log in to continue.',
+    'IdleTooLong':  'You were logged out due to inactivity. Please log in to continue.',
+    'Logout':       'You have been logged out successfully.',
+    'NotAuthenticated': 'Please log in to continue.'
+  };
+  const reason = params.get('Reason');
+  if (reason && reasonMsgs[reason]) {
+    showToast(reasonMsgs[reason], 'info');
+  }
+})();
+</script>
+</body>
+</html>
