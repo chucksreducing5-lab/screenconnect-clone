@@ -11,6 +11,11 @@ final class ViewController: UIViewController {
         loadExisting()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        loadExisting()
+    }
+
     @IBAction private func saveTapped(_ sender: UIButton) {
         let defaults = UserDefaults(suiteName: "group.top.helpsupport.remotesupport")
         defaults?.set(serverUrlField.text ?? "", forKey: "serverUrl")

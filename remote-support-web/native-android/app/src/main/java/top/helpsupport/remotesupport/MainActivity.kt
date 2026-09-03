@@ -3,6 +3,7 @@ package top.helpsupport.remotesupport
 import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -20,30 +21,56 @@ class MainActivity : AppCompatActivity() {
 
         mediaProjectionManager = getSystemService(MediaProjectionManager::class.java)
         restoreSavedFields()
+        val openedFromJoinLink = applyJoinLink(intent?.data)
+
+        if (openedFromJoinLink) {
+            window.decorView.post { requestCaptureConsent() }
+        }
 
         binding.startButton.setOnClickListener {
-            persistFields()
-            val serverUrl = binding.serverUrlInput.text?.toString()?.trim().orEmpty()
-            val sessionId = binding.sessionIdInput.text?.toString()?.trim().orEmpty()
-            val token = binding.tokenInput.text?.toString()?.trim().orEmpty()
-
-            if (serverUrl.isBlank() || sessionId.isBlank() || token.isBlank()) {
-                Toast.makeText(
-                    this,
-                    "Enter Server URL, Session ID, and Token before starting broadcast.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@setOnClickListener
-            }
-
-            val consentIntent = mediaProjectionManager.createScreenCaptureIntent()
-            startActivityForResult(consentIntent, REQ_CAPTURE)
+            requestCaptureConsent()
         }
 
         binding.stopButton.setOnClickListener {
             stopService(Intent(this, ScreenCaptureService::class.java))
             Toast.makeText(this, "Broadcast stopped.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (applyJoinLink(intent?.data)) {
+            window.decorView.post { requestCaptureConsent() }
+        }
+    }
+
+    private fun applyJoinLink(uri: Uri?): Boolean {
+        if (uri?.host != "join") return false
+        uri.getQueryParameter("server")?.takeIf { it.isNotBlank() }?.let { binding.serverUrlInput.setText(it) }
+        uri.getQueryParameter("sessionId")?.takeIf { it.isNotBlank() }?.let { binding.sessionIdInput.setText(it) }
+        uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }?.let { binding.tokenInput.setText(it) }
+        persistFields()
+        return true
+    }
+
+    private fun requestCaptureConsent() {
+        persistFields()
+        val serverUrl = binding.serverUrlInput.text?.toString()?.trim().orEmpty()
+        val sessionId = binding.sessionIdInput.text?.toString()?.trim().orEmpty()
+        val token = binding.tokenInput.text?.toString()?.trim().orEmpty()
+
+        if (serverUrl.isBlank() || sessionId.isBlank() || token.isBlank()) {
+            Toast.makeText(
+                this,
+                "Enter Server URL, Session ID, and Token before starting broadcast.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val consentIntent = mediaProjectionManager.createScreenCaptureIntent()
+        startActivityForResult(consentIntent, REQ_CAPTURE)
     }
 
     override fun onPause() {

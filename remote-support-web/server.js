@@ -3268,6 +3268,7 @@ wss.on('connection', (ws, req) => {
   if (role === 'agent' && clientKind === 'host-viewer') s.lastHostViewerConnectedAt = now();
   if (role === 'customer') {
     s.customerSocketId = ws.connectionId;
+    ws.lastSequence = -1;
     s.lastCustomerSequence = -1;
     updateCustomerLifecycleStatus(s, 'connecting');
     // Track no-frame telemetry windows to diagnose "connected but waiting for frames".
@@ -3473,10 +3474,13 @@ wss.on('connection', (ws, req) => {
     if (role === 'customer' && type === 'screen.frame') {
       const sequence = Number(payload?.sequence ?? -1);
       if (Number.isFinite(sequence) && sequence >= 0) {
-        if (typeof s.lastCustomerSequence === 'number' && sequence <= s.lastCustomerSequence) {
+        // Browser and native customer sockets can coexist; sequence numbers
+        // are local to each sender, not global to the session.
+        if (typeof ws.lastSequence === 'number' && sequence <= ws.lastSequence) {
           return;
         }
-        s.lastCustomerSequence = sequence;
+        ws.lastSequence = sequence;
+        s.lastCustomerSequence = Math.max(Number(s.lastCustomerSequence || -1), sequence);
       }
       s.lastFrameAt = now();
       updateCustomerLifecycleStatus(s, 'sending_frames');

@@ -24,6 +24,7 @@ Thumbs.db
 dist/
 build/
 *.log
+**/local.properties
 
 # Temporary files
 tmp/

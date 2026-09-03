@@ -218,7 +218,7 @@ class ScreenCaptureService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Remote Support")
             .setContentText("Sharing your screen with technician")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentIntent(pending)
             .setOngoing(true)
             .build()
