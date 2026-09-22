@@ -390,7 +390,13 @@ body.guest-page { overflow: auto; }
       const res = await fetch(`/api/sessions/${sessionId}/status`);
       if (res.ok) {
         const data = await res.json();
-        if (data.guestConnected || data.status === 'active') {
+        // guestConnected is now the single authoritative "really live" flag
+        // (true only once real frame data has arrived or a native agent
+        // confirmed connection). Session `status === 'active'` alone is not
+        // sufficient — a session can be marked 'active' as soon as a
+        // technician and a customer signaling socket are both present,
+        // before any screen frame has actually been received.
+        if (data.guestConnected) {
           showPhase('phaseConnected');
           return;
         }

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Net;
 using System.Net.Http;
 using System.Net.Security;
@@ -144,10 +145,63 @@ static async Task<T> ReadJsonOrThrowAsync<T>(HttpResponseMessage response)
     return JsonSerializer.Deserialize<T>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 }
 
+// PictureBox subclass that paints its Image with high-quality bicubic
+// interpolation and anti-aliased/high-quality smoothing (the GDI+
+// equivalent of the browser canvas's `imageSmoothingQuality = 'high'`)
+// instead of relying on PictureBoxSizeMode.Zoom's default low-quality
+// stretch. This keeps the native Windows host viewer visually consistent
+// with the browser-based host client's rendering quality.
+sealed class HighQualityPictureBox : PictureBox
+{
+    protected override void OnPaint(PaintEventArgs pe)
+    {
+        var img = Image;
+        if (img is null)
+        {
+            base.OnPaint(pe);
+            return;
+        }
+
+        var g = pe.Graphics;
+        g.SmoothingMode = SmoothingMode.HighQuality;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.CompositingQuality = CompositingQuality.HighQuality;
+
+        // Reproduce PictureBoxSizeMode.Zoom's "fit while preserving aspect
+        // ratio, centered" placement, but drawn through our high-quality
+        // Graphics settings instead of the control's default stretch.
+        var imgRatio = img.Width / (double)img.Height;
+        var boxRatio = Width / (double)Math.Max(1, Height);
+
+        int drawWidth, drawHeight, left, top;
+        if (boxRatio > imgRatio)
+        {
+            drawHeight = Height;
+            drawWidth = Math.Max(1, (int)Math.Round(Height * imgRatio));
+            left = (Width - drawWidth) / 2;
+            top = 0;
+        }
+        else
+        {
+            drawWidth = Width;
+            drawHeight = Math.Max(1, (int)Math.Round(Width / imgRatio));
+            left = 0;
+            top = (Height - drawHeight) / 2;
+        }
+
+        using (var bgBrush = new SolidBrush(BackColor))
+        {
+            g.FillRectangle(bgBrush, ClientRectangle);
+        }
+        g.DrawImage(img, new Rectangle(left, top, drawWidth, drawHeight));
+    }
+}
+
 sealed class HostViewerForm : Form
 {
     readonly HostOptions options;
-    readonly PictureBox remoteFrame = new();
+    readonly HighQualityPictureBox remoteFrame = new();
     readonly Label title = new();
     readonly Label subtitle = new();
     readonly Panel toolbar = new();
@@ -188,9 +242,44 @@ sealed class HostViewerForm : Form
             currentFrame?.Dispose();
             ws?.Dispose();
         };
+        // Single centralized keyboard handler: KeyDown/KeyUp are each wired
+        // exactly once here, so every physical keydown produces exactly one
+        // outbound "keydown" input event and every keyup produces exactly
+        // one outbound "keyup" input event (see SendKey for details).
         KeyDown += (_, e) => SendKey(e, "keydown");
         KeyUp += (_, e) => SendKey(e, "keyup");
+
+        // If the host viewer window loses focus (e.g. technician Alt+Tabs
+        // away) while a key is physically held, release everything we think
+        // is still down on the guest side so no key can get "stuck".
+        Deactivate += (_, _) => ReleaseAllHeldKeys();
     }
+
+    void ReleaseAllHeldKeys()
+    {
+        if (heldKeys.Count == 0 || !inputEnabled || !connected) { heldKeys.Clear(); return; }
+        foreach (var code in heldKeys)
+        {
+            Send("input", new
+            {
+                kind = "keyup",
+                key = "",
+                code = code.ToString(),
+                repeat = false,
+                ctrlKey = false,
+                altKey = false,
+                shiftKey = false,
+                metaKey = false
+            });
+        }
+        heldKeys.Clear();
+    }
+
+    // Tracks which physical keys are currently held (by WinForms Keys code)
+    // so a keydown for an already-held key can be reported as an OS
+    // autorepeat (repeat=true) rather than a fresh press, matching the
+    // browser-side KeyboardEvent.repeat semantics used by host-client.js.
+    readonly HashSet<Keys> heldKeys = new();
 
     void BuildChrome()
     {
@@ -267,6 +356,13 @@ sealed class HostViewerForm : Form
         remoteFrame.BackColor = Color.FromArgb(48, 48, 48);
         remoteFrame.Dock = DockStyle.Fill;
         remoteFrame.Location = new Point(0, 35);
+        // PictureBoxSizeMode.Zoom uses GDI+'s default (nearest-neighbor-ish,
+        // low quality) stretch when scaling the incoming frame to fit the
+        // control. HighQualityPictureBox overrides painting to use
+        // HighQualityBicubic interpolation + AntiAlias/HighQuality
+        // smoothing, matching the "high-quality smoothing and proper
+        // device-pixel scaling" behavior already used by the browser-side
+        // canvas renderer (imageSmoothingQuality = 'high').
         remoteFrame.SizeMode = PictureBoxSizeMode.Zoom;
         remoteFrame.TabStop = true;
         remoteFrame.MouseDown += (_, e) => SendPointer(e, "pointerdown");
@@ -567,25 +663,72 @@ sealed class HostViewerForm : Form
         return new Rectangle(left, top, width, height);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Centralized keyboard handling (single source of truth on the host
+    // side). SendKey is invoked from exactly two places — the form-level
+    // KeyDown and KeyUp handlers wired up in the constructor — so every
+    // physical keydown produces exactly one outbound "keydown" input event
+    // and every keyup produces exactly one outbound "keyup" input event.
+    // ─────────────────────────────────────────────────────────────────────
     void SendKey(KeyEventArgs e, string kind)
     {
         if (!inputEnabled || !connected) return;
+
+        // Previously any key outside a small hard-coded subset (letters,
+        // digits, a handful of named keys) mapped to "" and was silently
+        // dropped, which meant most symbols, function keys, numpad keys,
+        // and several modifier/navigation keys never reached the guest.
+        // KeyName() now returns a value for the full standard Windows key
+        // set, so we only bail out for genuinely unmapped/unknown codes.
         var key = KeyName(e);
         if (string.IsNullOrWhiteSpace(key)) return;
+
         e.Handled = true;
         e.SuppressKeyPress = true;
+
+        bool isRepeat = false;
+        if (kind == "keydown")
+        {
+            isRepeat = !heldKeys.Add(e.KeyCode); // Add() returns false if already present
+        }
+        else if (kind == "keyup")
+        {
+            heldKeys.Remove(e.KeyCode);
+        }
+
         Send("input", new
         {
-            kind,
+            kind, // "keydown" | "keyup"
             key,
             code = e.KeyCode.ToString(),
+            repeat = isRepeat,
             ctrlKey = e.Control,
             altKey = e.Alt,
             shiftKey = e.Shift,
-            metaKey = false
+            metaKey = IsWindowsKeyDown()
         });
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern short GetKeyState(int nVirtKey);
+
+    const int VK_LWIN = 0x5B;
+    const int VK_RWIN = 0x5C;
+
+    // WinForms' KeyEventArgs.Control/Alt/Shift reflect Ctrl/Alt/Shift state,
+    // but there is no equivalent Meta/Windows-key flag. Query it directly so
+    // Win-key combinations (e.g. Win+D, Win+L equivalents sent as key combos)
+    // are reported accurately instead of always being false.
+    static bool IsWindowsKeyDown()
+    {
+        return (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
+    }
+
+    // Maps a WinForms KeyEventArgs to the DOM-style `key` string the relay
+    // protocol / guest agent expects. Covers the full standard Windows key
+    // set: letters, digits, punctuation/Oem symbols, function keys F1-F24,
+    // numpad digits/operators, navigation keys, lock keys, left/right
+    // modifier variants, and the Windows/Apps keys — not just a small subset.
     static string KeyName(KeyEventArgs e)
     {
         if (e.KeyCode is >= Keys.A and <= Keys.Z)
@@ -593,26 +736,91 @@ sealed class HostViewerForm : Form
             var ch = (char)('a' + (e.KeyCode - Keys.A));
             return e.Shift ? char.ToUpperInvariant(ch).ToString() : ch.ToString();
         }
-        if (e.KeyCode is >= Keys.D0 and <= Keys.D9) return ((char)('0' + (e.KeyCode - Keys.D0))).ToString();
+        if (e.KeyCode is >= Keys.D0 and <= Keys.D9)
+        {
+            if (!e.Shift) return ((char)('0' + (e.KeyCode - Keys.D0))).ToString();
+            // Shifted number row produces the standard US symbol row; the
+            // guest-side agent still receives `code` (Digit0..Digit9) so a
+            // non-US layout can reinterpret if needed.
+            return e.KeyCode switch
+            {
+                Keys.D1 => "!",
+                Keys.D2 => "@",
+                Keys.D3 => "#",
+                Keys.D4 => "$",
+                Keys.D5 => "%",
+                Keys.D6 => "^",
+                Keys.D7 => "&",
+                Keys.D8 => "*",
+                Keys.D9 => "(",
+                Keys.D0 => ")",
+                _ => ""
+            };
+        }
+        if (e.KeyCode is >= Keys.NumPad0 and <= Keys.NumPad9) return ((char)('0' + (e.KeyCode - Keys.NumPad0))).ToString();
+        if (e.KeyCode is >= Keys.F1 and <= Keys.F24) return "F" + (1 + (e.KeyCode - Keys.F1));
+
         return e.KeyCode switch
         {
-            Keys.Enter => "Enter",
+            // Editing / control keys
+            Keys.Enter or Keys.Return => "Enter",
             Keys.Escape => "Escape",
             Keys.Back => "Backspace",
             Keys.Tab => "Tab",
             Keys.Space => " ",
+            Keys.Delete => "Delete",
+            Keys.Insert => "Insert",
+
+            // Navigation
             Keys.Left => "ArrowLeft",
             Keys.Up => "ArrowUp",
             Keys.Right => "ArrowRight",
             Keys.Down => "ArrowDown",
-            Keys.Delete => "Delete",
             Keys.Home => "Home",
             Keys.End => "End",
             Keys.PageUp => "PageUp",
             Keys.PageDown => "PageDown",
-            Keys.ShiftKey => "Shift",
-            Keys.ControlKey => "Control",
-            Keys.Menu => "Alt",
+
+            // Modifier keys (generic + left/right specific variants)
+            Keys.ShiftKey or Keys.LShiftKey => "Shift",
+            Keys.RShiftKey => "Shift",
+            Keys.ControlKey or Keys.LControlKey => "Control",
+            Keys.RControlKey => "Control",
+            Keys.Menu or Keys.LMenu => "Alt",
+            Keys.RMenu => "AltGraph",
+            Keys.LWin or Keys.RWin => "Meta",
+            Keys.Apps => "ContextMenu",
+
+            // Lock / system keys
+            Keys.CapsLock => "CapsLock",
+            Keys.NumLock => "NumLock",
+            Keys.Scroll => "ScrollLock",
+            Keys.PrintScreen => "PrintScreen",
+            Keys.Pause => "Pause",
+
+            // Numpad operators
+            Keys.Add => "+",
+            Keys.Subtract => "-",
+            Keys.Multiply => "*",
+            Keys.Divide => "/",
+            Keys.Decimal => ".",
+            Keys.Separator => "Enter",
+
+            // Punctuation / OEM symbol keys (US layout mapping; `code`
+            // still carries the physical OemXxx identity for other layouts)
+            Keys.OemMinus => e.Shift ? "_" : "-",
+            Keys.Oemplus => e.Shift ? "+" : "=",
+            Keys.OemOpenBrackets => e.Shift ? "{" : "[",
+            Keys.OemCloseBrackets => e.Shift ? "}" : "]",
+            Keys.OemPipe => e.Shift ? "|" : "\\",
+            Keys.OemSemicolon => e.Shift ? ":" : ";",
+            Keys.OemQuotes => e.Shift ? "\"" : "'",
+            Keys.OemComma => e.Shift ? "<" : ",",
+            Keys.OemPeriod => e.Shift ? ">" : ".",
+            Keys.OemQuestion => e.Shift ? "?" : "/",
+            Keys.Oemtilde => e.Shift ? "~" : "`",
+            Keys.OemBackslash => e.Shift ? "|" : "\\",
+
             _ => ""
         };
     }

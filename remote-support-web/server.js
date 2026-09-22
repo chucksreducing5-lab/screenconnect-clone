@@ -941,6 +941,18 @@ function publicSession(session, includeTokens = false) {
   const visibleStatus = session.permanentAccess && device
     ? (deviceOnline ? (session.status === 'active' ? 'active' : 'online') : 'offline')
     : session.status;
+
+  // A session is only truly "live" when real frame data has actually been
+  // received (screenStreaming, backed by a recent lastFrameAt) or a native
+  // desktop/mobile agent has confirmed itself connected (nativeConnected).
+  // Merely having a browser signaling WebSocket open (browserConnected /
+  // customerSocketId) must NEVER be treated as "live" on its own — that was
+  // the root cause of sessions showing as active/online before any screen
+  // frame had arrived. Every consumer of "is this session live" (the
+  // technician dashboard list, the /status endpoint, etc.) should read this
+  // single computed field instead of re-deriving their own definition.
+  const isLive = Boolean(session.nativeConnected || screenStreaming);
+
   const data = {
     id: session.id,
     sessionId: session.id,
@@ -967,9 +979,13 @@ function publicSession(session, includeTokens = false) {
     customerLifecycleStatusAt: session.customerLifecycleStatusAt || null,
     mobileSupport: session.mobileSupport || null,
     nativeConnected: Boolean(session.nativeConnected || (session.permanentAccess && deviceOnline)),
+    // browserConnected reflects signaling-socket presence ONLY (a customer
+    // browser tab is open). It is intentionally excluded from `isLive` —
+    // see comment above `isLive` for rationale.
     browserConnected: Boolean(session.customerSocketId),
     nativeClaimed: Boolean(session.lastNativeClaimAt),
     screenStreaming,
+    isLive,
     lastFrameAt: session.lastFrameAt || null,
     lastFrameReceivers: session.lastFrameReceivers || 0,
     permissions: session.permissions,
@@ -3928,7 +3944,13 @@ app.get('/api/sessions/:id/status', (req, res) => {
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ error:'Session not found' });
   const pub = publicSession(session, true);
-  res.json({ id: pub.id, name: pub.name, status: pub.status, guestConnected: pub.status==='active'||pub.status==='customer_joined'||pub.nativeConnected||pub.browserConnected, type: pub.type, code: pub.code, joinCode: pub.joinCode });
+  // guestConnected now mirrors `isLive`: true only once real frame data has
+  // arrived (screenStreaming) or a native agent has confirmed connection
+  // (nativeConnected). A customer's browser socket merely being open
+  // (browserConnected) — or the session being in the transient
+  // 'customer_joined' state before any frames arrive — is no longer enough
+  // to report the session as "connected".
+  res.json({ id: pub.id, name: pub.name, status: pub.status, guestConnected: pub.isLive, type: pub.type, code: pub.code, joinCode: pub.joinCode });
 });
 
 // PATCH /api/sessions/:id
