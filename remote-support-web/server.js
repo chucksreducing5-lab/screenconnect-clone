@@ -177,9 +177,51 @@ async function sendResetEmail(to, code) {
   return { sent: true };
 }
 
+// Hard fallback if PUBLIC_BASE_URL is ever unset/empty/misconfigured. This is
+// intentionally a constant (not derived from any request) so it can never be
+// poisoned by proxy headers or environment mistakes.
+const HARD_FALLBACK_PUBLIC_URL = 'https://www.helpsupport.top';
+
+// Any origin that resolves to the machine's own loopback interface (the
+// address Node listens on locally, BEFORE Cloudflare/Caddy/any reverse proxy
+// rewrites it) must never be handed to a customer or embedded in a download
+// link or native agent launch payload. If it is, the downloaded Windows
+// agent will dutifully try to connect to "localhost:<port>" on the
+// CUSTOMER'S OWN machine - where nothing is listening - producing exactly
+// the "No connection could be made because the target machine actively
+// refused it" error. This guard makes that class of bug structurally
+// impossible regardless of env var misconfiguration or proxy header issues.
+function isLoopbackOrigin(origin) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      host === '[::1]' ||
+      host.startsWith('127.')
+    );
+  } catch {
+    return true; // Unparseable origin is never safe to hand out either.
+  }
+}
+
+function safePublicBaseUrl() {
+  const configured = String(PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+  if (configured && !isLoopbackOrigin(configured)) return configured;
+  return HARD_FALLBACK_PUBLIC_URL;
+}
+
 function publicOrigin(req) {
-  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
-  return requestOrigin(req);
+  // Always prefer the explicitly configured public URL (falling back to the
+  // hardcoded production domain if that configuration is ever missing or
+  // accidentally set to a loopback address). We deliberately do NOT fall
+  // back to the raw request Host header here - that header reflects
+  // whatever address Node itself is bound to (e.g. "localhost:3001") when a
+  // reverse proxy does not forward X-Forwarded-Host, and must never leak
+  // into a customer-facing download link or native agent launch payload.
+  return safePublicBaseUrl();
 }
 
 function requestOrigin(req) {
@@ -187,7 +229,10 @@ function requestOrigin(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
   const protocol = forwardedProto || req.protocol;
   const host = forwardedHost || req.get('host');
-  return `${protocol}://${host}`;
+  const origin = `${protocol}://${host}`;
+  // Never surface a loopback-derived origin to callers of this function -
+  // treat it the same as "no usable origin was determined".
+  return isLoopbackOrigin(origin) ? safePublicBaseUrl() : origin;
 }
 
 function absoluteUrl(req, pathname = '/') {
@@ -209,8 +254,14 @@ function alternateOrigin(req) {
     requestOrigin(req),
     PUBLIC_BASE_URL,
     DOWNLOAD_BASE_URL
-  ].map((value) => String(value || '').replace(/\/+$/, ''));
-  return candidates.find((value) => value && value.toLowerCase() !== primary.toLowerCase()) || null;
+  ]
+    .map((value) => String(value || '').replace(/\/+$/, ''))
+    // A loopback address (e.g. http://localhost:3001, the address Node
+    // binds to locally) must never be offered as an "alternate" download
+    // origin - the customer's browser/agent cannot reach the server's own
+    // loopback interface. See isLoopbackOrigin() for the full rationale.
+    .filter((value) => value && !isLoopbackOrigin(value));
+  return candidates.find((value) => value.toLowerCase() !== primary.toLowerCase()) || null;
 }
 
 function downloadAliasUrl(fileName, query) {
@@ -417,7 +468,7 @@ app.get(['/login', '/Login'], (req, res) => {
   res.sendFile(path.join(publicDir, 'login.html'));
 });
 app.get('/api/config', (req, res) => {
-  res.json({ publicBaseUrl: PUBLIC_BASE_URL || publicOrigin(req) });
+  res.json({ publicBaseUrl: publicOrigin(req) });
 });
 app.post('/api/login', (req, res) => {
   const username = String(req.body?.username || '');
@@ -2466,7 +2517,7 @@ app.get('/api/instance', requireTechnician, (req, res) => {
       reportGenerator: true, privilegedAccess: true
     },
     extensions: [...installedExtensions.values()],
-    publicBaseUrl: PUBLIC_BASE_URL || publicOrigin(req)
+    publicBaseUrl: publicOrigin(req)
   });
 });
 
@@ -3054,7 +3105,7 @@ app.post('/api/session/:id/invite', requireTechnician, async (req, res) => {
   const email = String(req.body?.email || '').trim();
   if (!email) return res.status(400).json({ error: 'Email address required' });
   
-  const joinUrl = `${PUBLIC_BASE_URL || 'https://www.helpsupport.top'}/customer?code=${encodeURIComponent(s.joinCode || s.id)}`;
+  const joinUrl = `${safePublicBaseUrl()}/customer?code=${encodeURIComponent(s.joinCode || s.id)}`;
   
   try {
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
