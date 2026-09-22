@@ -20,7 +20,10 @@
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="System.Net.WebSockets.Client" Version="4.3.2" />
-  </ItemGroup>
+  <!--
+    NOTE: System.Net.WebSockets.ClientWebSocket ships as part of the net8.0-windows
+    shared framework, so no extra PackageReference is required (the previous
+    System.Net.WebSockets.Client 4.3.2 NuGet package targets netstandard1.3 and is
+    unnecessary/unsupported on net8.0 - it has been intentionally removed).
+  -->
 </Project>

@@ -3308,6 +3308,22 @@ wss.on('connection', (ws, req) => {
     } else if (isMobileBroadcast || isMobileViewer) {
       s.nativeConnected = true;
       updateCustomerLifecycleStatus(s, 'authenticated');
+    } else if (clientKind === 'windows-native-agent') {
+      // The real native Windows customer agent (native-agent/) captures the
+      // desktop and streams screen.frame messages itself; do not mark the
+      // session live purely from the socket handshake — wait for the first
+      // actual frame (handled by hasRecentScreenStream()/lastFrameAt below)
+      // so "live" always means real frame data arrived, never just a
+      // connected signaling socket.
+      s.nativeConnected = false;
+      s.customerScreenStatus = 'windows_agent_connected_waiting_first_frame';
+      updateCustomerLifecycleStatus(s, 'waiting_permission');
+      addAudit('windows.agent.connected.waiting_first_frame', {
+        actor: 'system',
+        sessionId: s.id,
+        deviceId: s.deviceId,
+        message: 'Windows native agent connected; waiting for first screen.frame before marking session active.'
+      });
     } else {
       // Browser join pages ('browser-share' and 'browser-broadcast') are signaling
       // channels only on mobile; the native broadcast app delivers the actual frames.
