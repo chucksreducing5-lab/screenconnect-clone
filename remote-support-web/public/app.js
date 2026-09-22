@@ -87,7 +87,14 @@ async function apiJson(method, path, body) {
 
 // ── Session Status ─────────────────────────────────────────────────────────
 function getSessionStatus(s) {
-  if (s.status === 'active' || s.guestConnected) return 'online';
+  // A session is only "online" (live) once real frame data has arrived
+  // (isLive, backed by nativeConnected or a recent screen.frame) — never
+  // purely because a customer browser socket connected. `s.status ===
+  // 'active'` alone used to be treated as sufficient here, but the server
+  // can mark a session 'active' as soon as a technician + a customer
+  // signaling socket are both present, before any frame has been received;
+  // `s.isLive` is the authoritative "really connected and streaming" flag.
+  if (s.isLive) return 'online';
   if (s.status === 'waiting' || s.status === 'customer_joined') return 'waiting';
   return 'offline';
 }

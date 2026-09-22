@@ -136,16 +136,13 @@ const SCViewer = {
         this.resetZoom();
       }
     });
-    
-    // Keyboard zoom shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      if (e.key === '=' || e.key === '+') { e.preventDefault(); this.setZoom(this.zoom + 0.25); }
-      if (e.key === '-') { e.preventDefault(); this.setZoom(this.zoom - 0.25); }
-      if (e.key === '0') { e.preventDefault(); this.resetZoom(); }
-      // Toggle HUD with Ctrl+H
-      if (e.key === 'h' || e.key === 'H') { e.preventDefault(); this.toggleHUD(); }
-    });
+
+    // NOTE: Keyboard zoom shortcuts (Ctrl +/-/0/H) are handled by the single
+    // centralized keyboard handler further down in this file (see
+    // "Centralized Keyboard Input Handler"). Do NOT add another
+    // document/window keydown listener here — a second listener would cause
+    // every keypress to be processed twice (once here, once there), which is
+    // exactly the "duplicate keydown" bug this fix eliminates.
   },
 
   createHUD() {
@@ -1001,12 +998,63 @@ function handleWheel(event) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Centralized Keyboard Input Handler
+// ─────────────────────────────────────────────────────────────────────────
+// Design goals (see FIX_PLAN.md):
+//  1. Exactly ONE code path handles host keyboard input — no other listener
+//     in this file may attach its own 'keydown'/'keyup' handlers.
+//  2. Exactly one keydown -> one input event, one keyup -> one release
+//     event. We track which physical keys are currently "down" (by
+//     event.code, which is layout/language independent) so that a genuine
+//     OS-level held-key situation does not get sent as if a *new* key was
+//     pressed on every autorepeat tick, while a truly new keydown always
+//     produces exactly one event. We still forward `repeat` to the host so
+//     the remote OS can apply its own native autorepeat behavior instead of
+//     the browser silently swallowing it.
+//  3. All standard Windows keys/symbols are transmitted: letters, digits,
+//     punctuation/Oem symbols, function keys, navigation keys, numpad,
+//     modifier keys (Shift/Ctrl/Alt/Meta, including left/right variants),
+//     Tab, Enter, Backspace, Escape, Delete, Insert, Home/End, Page Up/Down,
+//     Caps/Num/Scroll Lock, Print Screen, Pause, and the context-menu key.
+//     We rely on the browser's `event.code` (physical key identity) as the
+//     primary signal and pass `event.key` (the produced character, honoring
+//     the guest's current layout/shift state) alongside it, so the host can
+//     choose whichever representation is most reliable for a given key.
+
+// Tracks currently-pressed physical keys (by event.code) so repeated
+// keydown events for an already-down key can be recognized as OS autorepeat
+// (still forwarded, with repeat=true) rather than being misinterpreted as a
+// brand new press, and so a stray keyup for a key we never saw go down is
+// ignored instead of sending a spurious release.
+const heldKeys = new Set();
+
 function sendKey(event) {
   if (!inputEnabled || !connected || !isRemoteScreenInteractive()) return;
+
+  const code = event.code || '';
+  const isKeyDown = event.type === 'keydown';
+  const isKeyUp = event.type === 'keyup';
+
+  if (isKeyDown) {
+    // If this exact physical key is already held, this is an OS autorepeat —
+    // still forward it (repeat=true) but do not double-track it.
+    heldKeys.add(code);
+  } else if (isKeyUp) {
+    // Ignore keyup for a key we never registered as down (can happen when
+    // focus moved mid-press) so we never send an unmatched release event.
+    if (code && !heldKeys.has(code)) {
+      event.preventDefault();
+      return;
+    }
+    heldKeys.delete(code);
+  }
+
   event.preventDefault();
   lastInputAt = Date.now();
+
   send('input', {
-    kind: event.type,
+    kind: event.type, // 'keydown' | 'keyup' — one event in, one event out
     key: event.key,
     code: event.code,
     location: event.location,
@@ -1019,6 +1067,67 @@ function sendKey(event) {
     seq: nextInputSeq()
   });
 }
+
+// Local-only shortcuts for the host viewer UI itself (zoom / HUD toggle).
+// These never touch the remote session and must be checked BEFORE we decide
+// whether to forward the key as remote input, so Ctrl+/-/0/H control the
+// viewer locally without also being sent to the guest machine.
+function handleLocalViewerShortcut(event) {
+  if (!(event.ctrlKey || event.metaKey)) return false;
+  if (event.type !== 'keydown') return false;
+  if (event.key === '=' || event.key === '+') { event.preventDefault(); SCViewer.setZoom(SCViewer.zoom + 0.25); return true; }
+  if (event.key === '-') { event.preventDefault(); SCViewer.setZoom(SCViewer.zoom - 0.25); return true; }
+  if (event.key === '0') { event.preventDefault(); SCViewer.resetZoom(); return true; }
+  if (event.key === 'h' || event.key === 'H') { event.preventDefault(); SCViewer.toggleHUD(); return true; }
+  return false;
+}
+
+// Only forward keys to the remote guest when the remote screen area (or the
+// page body, i.e. nothing more specific) has focus. This prevents keystrokes
+// typed into chat, session-info fields, or any other on-page UI control from
+// being sent to the guest machine as remote input.
+function isFocusEligibleForRemoteInput() {
+  const active = document.activeElement;
+  return active === remoteScreen || active === document.body || active === null;
+}
+
+// Single window-level listener for keydown/keyup. We intentionally do NOT
+// also bind listeners on `remoteScreen`/`document` — a second binding was
+// the root cause of duplicated input events reaching the guest.
+function onWindowKeyEvent(event) {
+  if (handleLocalViewerShortcut(event)) return;
+  if (!isFocusEligibleForRemoteInput()) return;
+  sendKey(event);
+}
+
+window.addEventListener('keydown', onWindowKeyEvent);
+window.addEventListener('keyup', onWindowKeyEvent);
+
+// Release every physical key we believe is currently held on the remote
+// side (sends one synthetic keyup per held code) and clears local tracking.
+// Used any time focus moves away from an eligible target (chat box, another
+// window, etc.) so a key press+release that straddles that focus change can
+// never leave a key "stuck" down on the guest machine.
+function releaseAllHeldKeys() {
+  if (!heldKeys.size) return;
+  if (inputEnabled && connected) {
+    for (const code of heldKeys) {
+      send('input', { kind: 'keyup', key: '', code, location: 0, repeat: false, isComposing: false, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, seq: nextInputSeq() });
+    }
+  }
+  heldKeys.clear();
+}
+
+// Full window blur (e.g. Alt+Tab to another application).
+window.addEventListener('blur', releaseAllHeldKeys);
+
+// Focus moving to a different in-page element (e.g. the chat input). We
+// defer to a microtask so document.activeElement reflects the new target.
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if (!isFocusEligibleForRemoteInput()) releaseAllHeldKeys();
+  }, 0);
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Control Actions
@@ -1106,17 +1215,10 @@ remoteScreen.addEventListener('pointercancel', handlePointerUp);
 remoteScreen.addEventListener('dblclick', handleDoubleClick);
 remoteScreen.addEventListener('contextmenu', handleContextMenu);
 remoteScreen.addEventListener('wheel', handleWheel, { passive: false });
-remoteScreen.addEventListener('keydown', sendKey);
-remoteScreen.addEventListener('keyup', sendKey);
-
-window.addEventListener('keydown', (event) => {
-  if (event.target === remoteScreen) return;
-  if (document.activeElement === remoteScreen || document.activeElement === document.body) sendKey(event);
-});
-window.addEventListener('keyup', (event) => {
-  if (event.target === remoteScreen) return;
-  if (document.activeElement === remoteScreen || document.activeElement === document.body) sendKey(event);
-});
+// Keyboard input is handled exclusively by the single centralized
+// window-level listener registered above (onWindowKeyEvent / sendKey).
+// Do not add additional keydown/keyup listeners here — see
+// "Centralized Keyboard Input Handler" section for rationale.
 
 // Window resize handler for canvas
 window.addEventListener('resize', () => {

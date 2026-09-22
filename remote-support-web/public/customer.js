@@ -534,16 +534,22 @@ const SCCapture = {
   consecutiveSkips: 0,
   maxConsecutiveSkips: 30,
 
-  // Quality tiers (ScreenConnect uses similar adaptive quality)
+  // Quality tiers (ScreenConnect uses similar adaptive quality).
+  // `retina` (1440p) and `ultra` (1080p) are now the preferred desktop
+  // starting points instead of defaulting straight to aggressive
+  // downscaling — we only drop to `high`/`medium`/etc. if the adaptive
+  // bandwidth/frame-size logic in adaptQuality() detects it's actually
+  // needed, rather than starting there unconditionally.
   QUALITY_TIERS: {
-    ultra:   { maxWidth: 1920, quality: 0.92, fps: 15, format: 'webp', label: 'Ultra' },
-    high:    { maxWidth: 1920, quality: 0.82, fps: 12, format: 'webp', label: 'High' },
-    medium:  { maxWidth: 1280, quality: 0.70, fps: 10, format: 'jpeg', label: 'Medium' },
-    low:     { maxWidth: 1024, quality: 0.55, fps: 8,  format: 'jpeg', label: 'Low' },
-    minimal: { maxWidth: 800,  quality: 0.40, fps: 5,  format: 'jpeg', label: 'Minimal' },
+    retina:  { maxWidth: 2560, quality: 0.95, fps: 15, format: 'webp', label: 'Retina (1440p)' },
+    ultra:   { maxWidth: 1920, quality: 0.92, fps: 15, format: 'webp', label: 'Ultra (1080p)' },
+    high:    { maxWidth: 1920, quality: 0.85, fps: 12, format: 'webp', label: 'High' },
+    medium:  { maxWidth: 1280, quality: 0.75, fps: 10, format: 'jpeg', label: 'Medium' },
+    low:     { maxWidth: 1024, quality: 0.60, fps: 8,  format: 'jpeg', label: 'Low' },
+    minimal: { maxWidth: 800,  quality: 0.45, fps: 5,  format: 'jpeg', label: 'Minimal' },
   },
 
-  currentTier: 'high',
+  currentTier: 'ultra',
   supportsWebP: false,
 
   init() {
@@ -565,17 +571,24 @@ const SCCapture = {
 
   selectInitialTier() {
     if (isMobilePlatform()) {
-      // Mobile devices: start at medium to conserve battery/bandwidth
-      this.currentTier = 'medium';
-    } else if (window.innerWidth >= 1920) {
+      // Mobile devices: start at high (not the old aggressive 'medium'
+      // default) to conserve battery/bandwidth while still giving a
+      // reasonably sharp starting image; adaptQuality() will step down
+      // automatically if the network can't sustain it.
       this.currentTier = 'high';
+    } else if (window.innerWidth >= 2560 || (window.screen && window.screen.width >= 2560)) {
+      // Native display resolution supports 1440p+ — capture at full 1440p.
+      this.currentTier = 'retina';
     } else {
-      this.currentTier = 'high';
+      // Default desktop capture profile is 1080p ("ultra") quality instead
+      // of the previous 'high' tier, which applied more aggressive
+      // downscaling/compression by default.
+      this.currentTier = 'ultra';
     }
   },
 
   getTierConfig() {
-    const tier = this.QUALITY_TIERS[this.currentTier] || this.QUALITY_TIERS.high;
+    const tier = this.QUALITY_TIERS[this.currentTier] || this.QUALITY_TIERS.ultra;
     // Fall back to JPEG if WebP not supported
     if (tier.format === 'webp' && !this.supportsWebP) {
       return { ...tier, format: 'jpeg', quality: Math.min(tier.quality + 0.05, 0.95) };
@@ -595,15 +608,20 @@ const SCCapture = {
       );
     }
 
-    // Upgrade if frames are small and fast
-    if (sizeKB < 40 && this.estimatedBandwidthKbps > 3000 && this.framesSent > 30) {
+    // Upgrade if frames are small and fast (more willing to step back up
+    // toward retina/ultra once bandwidth proves it can sustain it, rather
+    // than staying stuck at a downgraded tier).
+    if (sizeKB < 60 && this.estimatedBandwidthKbps > 2500 && this.framesSent > 20) {
       this.upgradeTier();
     }
-    // Downgrade if frames are large or network is slow
-    else if (sizeKB > 200 || this.estimatedBandwidthKbps < 500) {
+    // Only downgrade for genuinely large frames or clearly poor bandwidth —
+    // thresholds raised so we don't aggressively downscale on transient
+    // frame-size spikes (e.g. a single busy repaint) or normal broadband
+    // conditions.
+    else if (sizeKB > 350 || this.estimatedBandwidthKbps < 350) {
       this.downgradeTier();
     }
-    else if (sizeKB > 120 && this.estimatedBandwidthKbps < 1500) {
+    else if (sizeKB > 220 && this.estimatedBandwidthKbps < 1000) {
       this.downgradeTier();
     }
   },
@@ -854,8 +872,18 @@ async function startBrowserShare() {
     setMessage('Choose the screen or phone display to share.');
 
     try {
+      // Request a higher-quality capture profile (ideal 1440p, minimum
+      // acceptable 1080p) instead of only constraining frameRate. Browsers
+      // will negotiate down to whatever the actual display supports, so
+      // this is a ceiling/preference, not a hard requirement — it just
+      // stops us from leaving quality on the table when 1080p/1440p+
+      // displays are available.
       browserStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 10 },
+        video: {
+          frameRate: { ideal: 15, max: 15 },
+          width: { ideal: 2560, min: 1280 },
+          height: { ideal: 1440, min: 720 }
+        },
         audio: false
       });
 
