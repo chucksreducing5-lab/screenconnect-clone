@@ -1,9 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// ScreenConnect-Quality Host Viewer
-// Canvas-based rendering, adaptive quality display, FPS counter, zoom/pan,
-// quality HUD overlay, improved input forwarding with touch translation
-// ═══════════════════════════════════════════════════════════════════════════════
-
 const remoteTitle = document.querySelector('#remoteTitle');
 const remoteFrame = document.querySelector('#remoteFrame');
 const remoteEmpty = document.querySelector('#remoteEmpty');
@@ -16,7 +10,6 @@ const infoCustomer = document.querySelector('#infoCustomer');
 const infoStatus = document.querySelector('#infoStatus');
 const infoDuration = document.querySelector('#infoDuration');
 const infoSessionId = document.querySelector('#infoSessionId');
-const infoQuality = document.querySelector('#infoQuality');
 const sessionDuration = document.querySelector('#sessionDuration');
 const chatMessages = document.querySelector('#chatMessages');
 const chatForm = document.querySelector('#chatForm');
@@ -30,14 +23,125 @@ const blankTile = document.querySelector('#blankTile');
 const blockInputToggle = document.querySelector('#blockInputToggle');
 const blockGuest = document.querySelector('#blockGuest');
 const fileQueue = document.querySelector('#fileQueue');
-const qualityHud = document.querySelector('#qualityHud');
-const fpsDisplay = document.querySelector('#fpsDisplay');
-const qualityTierDisplay = document.querySelector('#qualityTier');
-const resolutionDisplay = document.querySelector('#resolution');
-const bandwidthDisplay = document.querySelector('#bandwidth');
-const latencyDisplay = document.querySelector('#latency');
+// Optional canvas elements (added to index.html) for higher-quality rendering
+const nativeFrameCanvas = document.querySelector('#nativeFrameCanvas');
+const nativeFrameLargeCanvas = document.querySelector('#nativeFrameLargeCanvas');
+const remoteFrameCanvas = document.querySelector('#remoteFrameCanvas');
+const renderModeToggleHost = document.querySelector('#renderModeToggleHost');
+let useCanvasRendering = true;
+const requestHighQualityHost = document.querySelector('#requestHighQualityHost');
+let highQualityRequested = false;
+
+// Reconnection state
+let hostReconnectAttempts = 0;
+const MAX_HOST_RECONNECT_ATTEMPTS = 10;
+const BASE_HOST_RECONNECT_DELAY_MS = 1000;
+const MAX_HOST_RECONNECT_DELAY_MS = 30000;
+
+// Automatically request higher-quality capture from the guest when the
+// host has a large display or a high devicePixelRatio. This avoids forcing
+// HQ for small windows but gives the host an HD experience when appropriate.
+function maybeRequestHighQuality(autoReason) {
+  try {
+    if (highQualityRequested) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const displayW = Math.max(0, (remoteFrameCanvas?.getBoundingClientRect().width || window.innerWidth) * dpr);
+    // If host display is large or device has high DPR, request HQ frames.
+    if (displayW >= 1200 || dpr > 1.25) {
+      highQualityRequested = true;
+      if (requestHighQualityHost) requestHighQualityHost.textContent = 'HQ✓';
+      // Ask agent to use larger dimension and higher quality/frame-rate.
+      const payload = { format: 'webp', quality: 0.9, maxDimension: Math.min(3840, Math.round(displayW)), fps: 20 };
+      send('screen.capture.settings', payload);
+      setStatus('Request sent', `Requested high-quality frames${autoReason ? ' (' + autoReason + ')' : ''}.`);
+    }
+  } catch (e) {
+    // Non-fatal: continue without auto-HQ
+  }
+}
+
+// Top-level renderer: draw base64 frames into available canvases. This
+// implementation prefers createImageBitmap for quality/performance and
+// falls back to the Image-based approach.
+async function drawFrameToCanvases(src) {
+  // Prefer createImageBitmap (better for performance and quality) but
+  // fall back to Image object if unavailable or conversion fails.
+  let bitmap = null;
+  try {
+    const comma = src.indexOf(',');
+    const b64 = comma >= 0 ? src.slice(comma + 1) : src;
+    const bin = atob(b64);
+    const len = bin.length;
+    const arr = new Uint8Array(len);
+    for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'image/octet-stream' });
+    bitmap = await createImageBitmap(blob);
+  } catch (e) {
+    bitmap = null;
+  }
+
+  const drawUsingBitmap = (bitmapOrImage) => {
+    const draw = (canvas) => {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      const displayW = Math.max(1, Math.floor(rect.width));
+      const displayH = Math.max(1, Math.floor(rect.height));
+
+      canvas.width = Math.max(1, Math.floor(displayW * dpr));
+      canvas.height = Math.max(1, Math.floor(displayH * dpr));
+      canvas.style.width = displayW + 'px';
+      canvas.style.height = displayH + 'px';
+
+      ctx.imageSmoothingEnabled = true;
+      try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+      try { ctx.webkitImageSmoothingEnabled = true; } catch (e) {}
+
+      const srcW = bitmapOrImage.width || bitmapOrImage.naturalWidth || canvas.width;
+      const srcH = bitmapOrImage.height || bitmapOrImage.naturalHeight || canvas.height;
+
+      const scale = Math.min(canvas.width / srcW, canvas.height / srcH);
+      const dw = Math.round(srcW * scale);
+      const dh = Math.round(srcH * scale);
+      const dx = Math.round((canvas.width - dw) / 2);
+      const dy = Math.round((canvas.height - dh) / 2);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      try {
+        ctx.drawImage(bitmapOrImage, 0, 0, srcW, srcH, dx, dy, dw, dh);
+      } catch (e) {}
+    };
+
+    draw(nativeFrameCanvas);
+    draw(nativeFrameLargeCanvas);
+    draw(remoteFrameCanvas);
+
+    if (remoteFrame) {
+      try { remoteFrame.hidden = true; } catch (e) {}
+    }
+  };
+
+  if (bitmap) {
+    drawUsingBitmap(bitmap);
+    try { bitmap.close?.(); } catch (e) {}
+    return;
+  }
+
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => drawUsingBitmap(img);
+    img.src = src;
+  } catch (e) {
+    // ignore
+  }
+}
 
 const params = new URLSearchParams(location.search);
+// No-op anchor to prepare insertion.
 const sessionId = params.get('sessionId') || '';
 const token = params.get('token') || '';
 const displayName = params.get('displayName') || 'Guest User';
@@ -55,396 +159,129 @@ let lastInputAt = 0;
 let lastFrameAt = 0;
 let lastFramePayload = null;
 let frameWatchdog = null;
+let newestFrame = null;
+let renderScheduled = false;
 let sessionStartAt = Date.now();
 let sessionTimer = null;
 let inputEventSeq = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Canvas-Based Screen Renderer (ScreenConnect-quality rendering)
-// ═══════════════════════════════════════════════════════════════════════════════
+function isIosPlatformValue(platform) {
+  const value = String(platform || '').toLowerCase();
+  return value === 'ios' || value === 'iphone' || value === 'ipad';
+}
 
-const SCViewer = {
-  canvas: null,
-  ctx: null,
-  currentImage: null,
-  pendingImage: null,
-  renderScheduled: false,
-  naturalWidth: 0,
-  naturalHeight: 0,
-  
-  // FPS tracking
-  frameCount: 0,
-  fpsFrameCount: 0,
-  lastFpsUpdate: 0,
-  currentFps: 0,
-  
-  // Quality stats
-  lastFormat: 'jpeg',
-  lastQuality: 0,
-  lastTier: 'unknown',
-  lastFrameSize: 0,
-  totalBytesReceived: 0,
-  framesReceived: 0,
-  lastFrameTimestamp: 0,
-  avgLatency: 0,
-  
-  // Zoom/Pan state
-  zoom: 1,
-  panX: 0,
-  panY: 0,
-  isPanning: false,
-  panStartX: 0,
-  panStartY: 0,
-  minZoom: 1,
-  maxZoom: 5,
-  
-  // HUD visibility
-  hudVisible: false,
-
-  init() {
-    // Create canvas for rendering
-    this.canvas = document.createElement('canvas');
-    this.canvas.id = 'viewerCanvas';
-    this.canvas.style.cssText = 'width:100%;height:100%;object-fit:contain;cursor:crosshair;touch-action:none;user-select:none;-webkit-user-select:none;image-rendering:auto;';
-    this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true });
-    
-    // Insert canvas into the remote screen area
-    if (remoteScreen) {
-      remoteScreen.appendChild(this.canvas);
-    }
-    
-    // Create quality HUD overlay
-    this.createHUD();
-    
-    // FPS counter
-    this.lastFpsUpdate = performance.now();
-    setInterval(() => this.updateFpsCounter(), 1000);
-    
-    // Handle zoom with mouse wheel (Ctrl+scroll)
-    this.canvas.addEventListener('wheel', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        this.setZoom(this.zoom + delta, e.offsetX, e.offsetY);
-      }
-    }, { passive: false });
-    
-    // Handle zoom reset on double-click with Ctrl
-    this.canvas.addEventListener('dblclick', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        this.resetZoom();
-      }
-    });
-
-    // NOTE: Keyboard zoom shortcuts (Ctrl +/-/0/H) are handled by the single
-    // centralized keyboard handler further down in this file (see
-    // "Centralized Keyboard Input Handler"). Do NOT add another
-    // document/window keydown listener here — a second listener would cause
-    // every keypress to be processed twice (once here, once there), which is
-    // exactly the "duplicate keydown" bug this fix eliminates.
-  },
-
-  createHUD() {
-    if (qualityHud) return; // Already exists in HTML
-    
-    const hud = document.createElement('div');
-    hud.id = 'qualityHud';
-    hud.className = 'quality-hud';
-    hud.innerHTML = `
-      <div class="hud-row"><span class="hud-label">FPS</span><span id="fpsDisplay" class="hud-value">0</span></div>
-      <div class="hud-row"><span class="hud-label">Quality</span><span id="qualityTier" class="hud-value">—</span></div>
-      <div class="hud-row"><span class="hud-label">Resolution</span><span id="resolution" class="hud-value">—</span></div>
-      <div class="hud-row"><span class="hud-label">Bandwidth</span><span id="bandwidth" class="hud-value">—</span></div>
-      <div class="hud-row"><span class="hud-label">Latency</span><span id="latency" class="hud-value">—</span></div>
-      <div class="hud-row"><span class="hud-label">Frames</span><span id="framesTotal" class="hud-value">0</span></div>
-      <div class="hud-row"><span class="hud-label">Zoom</span><span id="zoomLevel" class="hud-value">100%</span></div>
-    `;
-    hud.hidden = true;
-    if (remoteScreen) remoteScreen.appendChild(hud);
-  },
-
-  toggleHUD() {
-    this.hudVisible = !this.hudVisible;
-    const hud = document.getElementById('qualityHud');
-    if (hud) hud.hidden = !this.hudVisible;
-  },
-
-  updateFpsCounter() {
-    const now = performance.now();
-    const elapsed = (now - this.lastFpsUpdate) / 1000;
-    this.currentFps = Math.round(this.fpsFrameCount / Math.max(elapsed, 0.001));
-    this.fpsFrameCount = 0;
-    this.lastFpsUpdate = now;
-    
-    // Update HUD elements
-    const fpsEl = document.getElementById('fpsDisplay');
-    const tierEl = document.getElementById('qualityTier');
-    const resEl = document.getElementById('resolution');
-    const bwEl = document.getElementById('bandwidth');
-    const latEl = document.getElementById('latency');
-    const framesEl = document.getElementById('framesTotal');
-    const zoomEl = document.getElementById('zoomLevel');
-    
-    if (fpsEl) fpsEl.textContent = this.currentFps;
-    if (tierEl) tierEl.textContent = this.lastTier ? `${this.lastTier} (${this.lastFormat})` : '—';
-    if (resEl) resEl.textContent = this.naturalWidth ? `${this.naturalWidth}×${this.naturalHeight}` : '—';
-    if (bwEl) {
-      const kbps = Math.round((this.totalBytesReceived * 8) / Math.max(1, (Date.now() - sessionStartAt) / 1000) / 1000);
-      bwEl.textContent = kbps > 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${kbps} Kbps`;
-    }
-    if (latEl) latEl.textContent = this.avgLatency > 0 ? `${Math.round(this.avgLatency)} ms` : '—';
-    if (framesEl) framesEl.textContent = this.framesReceived;
-    if (zoomEl) zoomEl.textContent = `${Math.round(this.zoom * 100)}%`;
-    
-    // Update info panel quality
-    if (infoQuality) {
-      infoQuality.textContent = `${this.lastTier || 'Waiting'} • ${this.currentFps} FPS • ${this.lastFormat.toUpperCase()}`;
-    }
-  },
-
-  setZoom(newZoom, anchorX, anchorY) {
-    const prev = this.zoom;
-    this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, newZoom));
-    
-    if (anchorX !== undefined && anchorY !== undefined) {
-      // Zoom toward the anchor point
-      const scale = this.zoom / prev;
-      this.panX = anchorX - (anchorX - this.panX) * scale;
-      this.panY = anchorY - (anchorY - this.panY) * scale;
-    }
-    
-    this.constrainPan();
-    this.render();
-  },
-
-  resetZoom() {
-    this.zoom = 1;
-    this.panX = 0;
-    this.panY = 0;
-    this.render();
-  },
-
-  constrainPan() {
-    if (this.zoom <= 1) {
-      this.panX = 0;
-      this.panY = 0;
-      return;
-    }
-    const maxPanX = (this.canvas.width * (this.zoom - 1)) / 2;
-    const maxPanY = (this.canvas.height * (this.zoom - 1)) / 2;
-    this.panX = Math.max(-maxPanX, Math.min(maxPanX, this.panX));
-    this.panY = Math.max(-maxPanY, Math.min(maxPanY, this.panY));
-  },
-
-  // Schedule a frame render using requestAnimationFrame for smooth 60hz display
-  scheduleRender(format, data, width, height, quality, tier, timestamp) {
-    this.pendingImage = { format, data, width, height, quality, tier, timestamp };
-    
-    if (!this.renderScheduled) {
-      this.renderScheduled = true;
-      requestAnimationFrame(() => this.processPendingFrame());
-    }
-  },
-
-  processPendingFrame() {
-    this.renderScheduled = false;
-    const frame = this.pendingImage;
-    this.pendingImage = null;
-    if (!frame) return;
-
-    const img = new Image();
-    img.onload = () => {
-      this.currentImage = img;
-      this.naturalWidth = frame.width || img.naturalWidth;
-      this.naturalHeight = frame.height || img.naturalHeight;
-      this.lastFormat = frame.format || 'jpeg';
-      this.lastQuality = frame.quality || 0;
-      this.lastTier = frame.tier || 'unknown';
-      this.lastFrameSize = Math.round(frame.data.length * 0.75);
-      this.totalBytesReceived += this.lastFrameSize;
-      this.framesReceived++;
-      this.fpsFrameCount++;
-      this.lastFrameTimestamp = frame.timestamp || Date.now();
-      
-      // Estimate latency from timestamp
-      if (frame.timestamp) {
-        const latency = Date.now() - frame.timestamp;
-        this.avgLatency = this.avgLatency > 0
-          ? this.avgLatency * 0.8 + latency * 0.2
-          : latency;
-      }
-      
-      this.render();
-      
-      // Update connection state
-      lastFrameAt = Date.now();
-      lastFramePayload = { format: frame.format, data: frame.data };
-
-      if (!connected) {
-        connected = true;
-        onFirstFrame();
-      }
-
-      remoteFrame.hidden = true;
-      remoteEmpty.hidden = true;
-      this.canvas.hidden = false;
-      
-      let statusDetail = 'Remote screen connected. Full remote control is available.';
-      if (guestPlatform === 'ios') {
-        statusDetail = 'iOS device connected. View-only mode (iOS does not support remote input).';
-      } else if (guestPlatform === 'android') {
-        statusDetail = 'Android device connected. Remote control via accessibility service.';
-      } else if (guestPlatform === 'macos') {
-        statusDetail = 'macOS device connected. Remote view active.';
-      }
-      setStatus('Connected', statusDetail);
-    };
-    
-    img.onerror = () => {
-      // Keep last good frame visible
-    };
-    
-    const mime = String(frame.format).includes('/') ? String(frame.format) : `image/${String(frame.format)}`;
-    img.src = `data:${mime};base64,${frame.data}`;
-  },
-
-  render() {
-    if (!this.currentImage || !this.ctx) return;
-    
-    const img = this.currentImage;
-    const canvas = this.canvas;
-    
-    // Size canvas to match container
-    const container = canvas.parentElement;
-    if (!container) return;
-    
-    const rect = container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const displayWidth = Math.round(rect.width);
-    const displayHeight = Math.round(rect.height);
-    
-    // Set canvas internal resolution (high DPI support)
-    if (canvas.width !== displayWidth * dpr || canvas.height !== displayHeight * dpr) {
-      canvas.width = displayWidth * dpr;
-      canvas.height = displayHeight * dpr;
-      canvas.style.width = displayWidth + 'px';
-      canvas.style.height = displayHeight + 'px';
-    }
-    
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    
-    // Clear
-    ctx.fillStyle = '#050a12';
-    ctx.fillRect(0, 0, displayWidth, displayHeight);
-    
-    // Calculate image placement with object-fit: contain
-    const imgRatio = img.naturalWidth / img.naturalHeight;
-    const containerRatio = displayWidth / displayHeight;
-    
-    let drawWidth, drawHeight, drawX, drawY;
-    
-    if (containerRatio > imgRatio) {
-      // Container wider than image
-      drawHeight = displayHeight;
-      drawWidth = drawHeight * imgRatio;
-      drawX = (displayWidth - drawWidth) / 2;
-      drawY = 0;
-    } else {
-      // Container taller than image
-      drawWidth = displayWidth;
-      drawHeight = drawWidth / imgRatio;
-      drawX = 0;
-      drawY = (displayHeight - drawHeight) / 2;
-    }
-    
-    // Apply zoom and pan
-    if (this.zoom > 1) {
-      const centerX = displayWidth / 2 + this.panX;
-      const centerY = displayHeight / 2 + this.panY;
-      ctx.translate(centerX, centerY);
-      ctx.scale(this.zoom, this.zoom);
-      ctx.translate(-centerX, -centerY);
-    }
-    
-    // High quality rendering
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    
-    // Draw the remote screen image
-    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-    
-    ctx.restore();
-  },
-
-  // Convert screen coordinates to remote machine coordinates (0-1 normalized)
-  screenToRemote(clientX, clientY) {
-    if (!this.currentImage || !this.canvas) return { x: 0.5, y: 0.5 };
-    
-    const rect = this.canvas.getBoundingClientRect();
-    const canvasX = clientX - rect.left;
-    const canvasY = clientY - rect.top;
-    const displayWidth = rect.width;
-    const displayHeight = rect.height;
-    
-    // Undo zoom/pan
-    let x = canvasX;
-    let y = canvasY;
-    
-    if (this.zoom > 1) {
-      const centerX = displayWidth / 2 + this.panX;
-      const centerY = displayHeight / 2 + this.panY;
-      x = (x - centerX) / this.zoom + centerX;
-      y = (y - centerY) / this.zoom + centerY;
-    }
-    
-    // Calculate image bounds (object-fit: contain)
-    const img = this.currentImage;
-    const imgRatio = img.naturalWidth / img.naturalHeight;
-    const containerRatio = displayWidth / displayHeight;
-    
-    let drawWidth, drawHeight, drawX, drawY;
-    
-    if (containerRatio > imgRatio) {
-      drawHeight = displayHeight;
-      drawWidth = drawHeight * imgRatio;
-      drawX = (displayWidth - drawWidth) / 2;
-      drawY = 0;
-    } else {
-      drawWidth = displayWidth;
-      drawHeight = drawWidth / imgRatio;
-      drawX = 0;
-      drawY = (displayHeight - drawHeight) / 2;
-    }
-    
-    // Map to 0-1 range within the image area
-    const normalizedX = (x - drawX) / drawWidth;
-    const normalizedY = (y - drawY) / drawHeight;
-    
-    return {
-      x: Number(Math.min(1, Math.max(0, normalizedX)).toFixed(5)),
-      y: Number(Math.min(1, Math.max(0, normalizedY)).toFixed(5))
-    };
+// Render-mode toggle handling for host client window
+function setUseCanvasRenderingHost(value) {
+  useCanvasRendering = Boolean(value);
+  if (renderModeToggleHost) renderModeToggleHost.textContent = useCanvasRendering ? 'Canvas' : 'Image';
+  if (!useCanvasRendering) {
+    if (remoteFrame) remoteFrame.hidden = false;
+    if (remoteFrameCanvas) remoteFrameCanvas.hidden = true;
+    if (nativeFrameCanvas) nativeFrameCanvas.hidden = true;
+    if (nativeFrameLargeCanvas) nativeFrameLargeCanvas.hidden = true;
+  } else {
+    if (remoteFrame) remoteFrame.hidden = true;
+    if (remoteFrameCanvas) remoteFrameCanvas.hidden = false;
+    if (nativeFrameCanvas) nativeFrameCanvas.hidden = false;
+    if (nativeFrameLargeCanvas) nativeFrameLargeCanvas.hidden = false;
   }
-};
+}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Status & Connection Management
-// ═══════════════════════════════════════════════════════════════════════════════
+if (renderModeToggleHost) {
+  renderModeToggleHost.addEventListener('click', () => setUseCanvasRenderingHost(!useCanvasRendering));
+}
+setUseCanvasRenderingHost(true);
 
-function onFirstFrame() {
-  inputToggle.classList.add('active');
-  remoteStatusPanel.hidden = true;
-  remoteScreen.focus();
-  startSessionTimer();
+// High-quality capture request: toggles a request to the server/agent to increase capture quality
+if (requestHighQualityHost) {
+  requestHighQualityHost.addEventListener('click', () => {
+    highQualityRequested = !highQualityRequested;
+    requestHighQualityHost.textContent = highQualityRequested ? 'HQ✓' : 'HQ';
+    // Send a capture settings request to the server which should forward to the agent
+    const payload = highQualityRequested
+      ? { format: 'webp', quality: 0.9, maxDimension: 1920, fps: 15 }
+      : { format: 'jpeg', quality: 0.6, maxDimension: 1280, fps: 10 };
+    send('screen.capture.settings', payload);
+    setStatus('Request sent', highQualityRequested ? 'Requested high-quality frames from customer agent.' : 'Requested standard-quality frames.');
+  });
+}
+
+function renderNewestFrame() {
+  renderScheduled = false;
+  const frame = newestFrame;
+  newestFrame = null;
+  if (!frame) return;
+
+  // Keep the placeholder image src so naturalWidth/naturalHeight remain available
+  try {
+    if (remoteFrame) remoteFrame.src = frame.src;
+  } catch (e) {
+    // ignore
+  }
+
+  // Hide the empty placeholder
+  if (remoteEmpty) remoteEmpty.hidden = true;
+
+  lastFrameAt = Date.now();
+  lastFramePayload = { format: frame.format, data: frame.data };
+
+  if (useCanvasRendering) {
+    if (nativeFrameLargeCanvas) nativeFrameLargeCanvas.hidden = false;
+    if (nativeFrameCanvas) nativeFrameCanvas.hidden = false;
+    if (remoteFrameCanvas) remoteFrameCanvas.hidden = false;
+    // Draw to any available canvas using high-quality smoothing and devicePixelRatio.
+    drawFrameToCanvases(frame.src);
+  } else {
+    // Fallback: show image element so browser handles scaling.
+    try { if (remoteFrame) remoteFrame.src = frame.src; } catch (e) {}
+    if (remoteFrame) remoteFrame.hidden = false;
+    if (nativeFrameLargeCanvas) nativeFrameLargeCanvas.hidden = true;
+    if (nativeFrameCanvas) nativeFrameCanvas.hidden = true;
+    if (remoteFrameCanvas) remoteFrameCanvas.hidden = true;
+  }
+
+  const wasConnected = connected;
+  connected = true;
+
+  let statusDetail = 'Your guest is connected. Remote screen control is available.';
+  if (isIosPlatformValue(guestPlatform)) {
+    statusDetail = 'Your guest is connected. Remote view is active (iOS does not support remote control).';
+  } else if (guestPlatform === 'android') {
+    statusDetail = 'Your guest is connected. Remote screen control is available via Android accessibility.';
+  } else if (guestPlatform === 'macos') {
+    statusDetail = 'Your guest is connected. Remote view is active (macOS browser sharing).';
+  }
+
+  // drawFrameToCanvases is implemented at top-level for reuse by watchdog and other code.
+
+  setStatus('Connected', statusDetail);
   if (displayName) remoteTitle.textContent = displayName;
+
+  if (!wasConnected) {
+    inputToggle.classList.add('active');
+    remoteStatusPanel.hidden = true;
+    remoteScreen.focus();
+    startSessionTimer();
+  }
+}
+
+function scheduleFrameRender(format, data) {
+  const mime = String(format).includes('/') ? String(format) : `image/${String(format)}`;
+  newestFrame = {
+    format,
+    data,
+    src: `data:${mime};base64,${data}`
+  };
+
+  if (renderScheduled) return;
+  renderScheduled = true;
+  requestAnimationFrame(renderNewestFrame);
 }
 
 function statusTone(title) {
   const normalized = String(title || '').toLowerCase();
   if (normalized.includes('connected') || normalized.includes('live')) {
+    // Host only considers the session "connected" (green badge) once screen frames are arriving.
     return connected ? 'connected' : 'waiting';
   }
   if (normalized.includes('disconnected') || normalized.includes('ended') || normalized.includes('error')) return 'disconnected';
@@ -480,15 +317,14 @@ function appendChat(sender, text) {
   if (!chatMessages || !text) return;
   const row = document.createElement('div');
   row.className = `chat-line ${sender === 'host' ? 'host' : 'guest'}`;
-  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  row.textContent = `[${time}] ${sender === 'host' ? 'You' : 'Guest'}: ${text}`;
+  row.textContent = `${sender === 'host' ? 'You' : 'Guest'}: ${text}`;
   chatMessages.appendChild(row);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function setStatus(title, message) {
-  if (remoteStatus) remoteStatus.textContent = title;
-  if (remoteStatusMessage) remoteStatusMessage.textContent = message;
+  remoteStatus.textContent = title;
+  remoteStatusMessage.textContent = message;
   const tone = statusTone(title);
   updateConnectionBadge(tone);
   if (infoStatus) infoStatus.textContent = tone.charAt(0).toUpperCase() + tone.slice(1);
@@ -498,7 +334,7 @@ function showStatusPanel(title, message) {
   remoteStatusPanel.hidden = false;
   setStatus(title, message);
   if (statusActions) {
-    const isMobile = guestPlatform === 'ios' || guestPlatform === 'android';
+    const isMobile = isIosPlatformValue(guestPlatform) || guestPlatform === 'android';
     const isStuck = title.toLowerCase().includes('waiting') || title.toLowerCase().includes('frame') || title.toLowerCase().includes('disconnected');
     statusActions.hidden = !(isMobile && isStuck);
   }
@@ -579,18 +415,11 @@ async function showTroubleshootingStatus(title, fallback) {
   showStatusPanel(title, hostTroubleshootingMessage(diagnostics, fallback));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// WebSocket Connection
-// ═══════════════════════════════════════════════════════════════════════════════
-
 function connect() {
   if (infoSessionId) infoSessionId.textContent = sessionId || '-';
   if (infoCustomer) infoCustomer.textContent = displayName;
   if (remoteTitle) remoteTitle.textContent = displayName;
   startSessionTimer();
-
-  // Initialize the canvas viewer
-  SCViewer.init();
 
   if (!sessionId || !token) {
     setStatus('Missing session details', 'Close this window and launch the host client again from the technician console.');
@@ -612,12 +441,16 @@ function connect() {
   });
 
   ws.addEventListener('open', () => {
+    // Reset reconnection attempts on successful connection
+    hostReconnectAttempts = 0;
     setStatus('Waiting for your guest...', 'You have successfully connected to the session, but your guest has not yet connected. Your session will start when they connect.');
     window.setTimeout(() => {
       if (!connected) {
         void showTroubleshootingStatus('Waiting for your guest...', 'The session is open, but no customer screen stream has connected yet.');
       }
     }, 12000);
+    // On open, consider requesting higher-quality frames automatically for HD hosts
+    try { maybeRequestHighQuality('auto on connect'); } catch (e) {}
     window.setTimeout(() => {
       if (connected && !lastFrameAt) {
         showStatusPanel(
@@ -628,61 +461,51 @@ function connect() {
     }, 15000);
   });
 
-  // Watchdog: if the host viewer stops receiving frames, show status
+  // Watchdog: if the host viewer stops receiving frames, force a re-render.
+  // This recovers from browser/UI “stuck image” states without affecting input relay.
   if (!frameWatchdog) {
     frameWatchdog = setInterval(() => {
       const nowTs = Date.now();
       if (!connected) return;
       if (lastFrameAt && nowTs - lastFrameAt > 5000 && lastFramePayload?.data) {
-        // Re-render last frame to recover from any rendering glitch
-        SCViewer.render();
+        const fmt = lastFramePayload.format || lastFramePayload.mime || 'jpeg';
+        const data = lastFramePayload.data;
+        const mime = String(fmt).includes('/') ? String(fmt) : `image/${String(fmt)}`;
+        const src = `data:${mime};base64,${data}`;
+        // Update image natural size and also draw to canvases for higher-quality rendering.
+        try { if (remoteFrame) remoteFrame.src = src; } catch (e) {}
+        drawFrameToCanvases(src);
+        if (remoteEmpty) remoteEmpty.hidden = true;
         setStatus('Connected', 'Recovered screen stream (watchdog).');
       } else if (lastFrameAt && nowTs - lastFrameAt > 10000) {
         void showTroubleshootingStatus('Waiting for screen frames', 'The guest is connected, but no recent screen frames are arriving.');
       }
-    }, 2000);
+    }, 1000);
   }
 
   ws.addEventListener('message', async (event) => {
     const { type, payload } = JSON.parse(event.data);
-    
     if (type === 'screen.frame') {
+      // Make rendering resilient: payload may be malformed or arrive in unexpected shape.
       const fmt = payload && (payload.format || payload.mime || 'jpeg');
       const data = payload && (payload.data ?? payload.image ?? payload.frame);
 
       if (typeof data !== 'string' || !data.length) {
+        // Keep last good frame (avoid clearing), but mark status for visibility.
         setStatus('Connected', 'Guest connected, waiting for next valid screen frame...');
         return;
       }
 
-      // Use the new canvas-based renderer
-      SCViewer.scheduleRender(
-        fmt,
-        data,
-        payload.width || 0,
-        payload.height || 0,
-        payload.quality || 0,
-        payload.tier || 'unknown',
-        payload.timestamp || 0
-      );
-      
-      // Also keep the img element updated as fallback
-      const mime = String(fmt).includes('/') ? String(fmt) : `image/${String(fmt)}`;
-      remoteFrame.src = `data:${mime};base64,${data}`;
+      scheduleFrameRender(fmt, data);
+      // On receiving the first frames, auto-upgrade capture quality if host looks like an HD display.
+      try { maybeRequestHighQuality('auto on first frame'); } catch (e) {}
     }
 
     if (type === 'screen.broadcast.status') {
       if (payload?.platform) guestPlatform = String(payload.platform).toLowerCase();
-      
-      // Update capture stats if available
-      if (payload?.captureStats) {
-        SCViewer.lastTier = payload.captureStats.tierLabel || payload.captureStats.tier || 'unknown';
-        SCViewer.lastFormat = payload.captureStats.format || 'jpeg';
-      }
-      
       const status = payload?.status || 'waiting';
       if (status === 'live') {
-        setStatus('Broadcast live', payload?.message || 'Screen broadcast is live. Waiting for the next frame...');
+        setStatus('Broadcast live', payload?.message || 'Mobile screen broadcast is live. Waiting for the next frame...');
       } else if (status === 'starting') {
         showStatusPanel('Starting broadcast', payload?.message || 'The customer approved screen broadcast. Waiting for the first frame...');
       } else if (status === 'waiting' || status === 'waiting_first_frame') {
@@ -700,8 +523,10 @@ function connect() {
       } else if (status === 'stream_stale' || status === 'reconnect_required') {
         showStatusPanel(
           'Broadcast interrupted',
-          payload?.message || 'Mobile broadcast interrupted. Ask customer to restart broadcast and keep app in foreground.'
+          payload?.message || 'Mobile broadcast interrupted. Ask customer to restart broadcast and keep app in foreground. Use the “Restart broadcast” action if available.'
         );
+        // If we have the restart button, ensure the action panel becomes visible for quick recovery.
+        if (remoteStatusPanel && statusActions) statusActions.hidden = false;
       } else if (status === 'unavailable') {
         showStatusPanel(
           payload?.requiresNativeApp ? 'iOS app required' : 'Broadcast unavailable',
@@ -719,7 +544,7 @@ function connect() {
       if (payload?.clientKind) guestClientKind = payload.clientKind;
       if (payload?.platform) guestPlatform = String(payload.platform).toLowerCase();
 
-      if (guestClientKind === 'ios-mobile-broadcast') guestPlatform = 'ios';
+      if (guestClientKind === 'ios-mobile-broadcast') guestPlatform = 'iphone';
       if (guestClientKind === 'android-mobile-broadcast' || guestClientKind === 'mobile-broadcast') guestPlatform = 'android';
       if (guestClientKind === 'windows-native-agent') guestPlatform = 'windows';
 
@@ -732,11 +557,11 @@ function connect() {
       showStatusPanel(
         (browserShareClient || mobileBroadcastClient) ? 'Customer connected (waiting for screen)' : 'Guest connected',
         iosBroadcastClient
-          ? 'iPhone/iPad customer is connected. Ask them to open the iOS support app and Start Broadcast.'
+          ? 'iPhone/iPad customer is connected. Ask them to open the iOS support app: Visit Host URL, Enter Code, Initiate ScreenShare, then Start Broadcast.'
           : androidBroadcastClient
-            ? 'Android customer is connected. Ask them to start screen sharing and approve capture permissions.'
+            ? 'Android customer is connected. Ask them to start screen sharing in the support app and approve all capture/accessibility prompts.'
             : browserShareClient
-              ? 'Customer joined the session. Ask them to tap Start Broadcast / Share Screen.'
+              ? 'The phone joined the session. Ask the customer to tap Start Broadcast / Share Screen and approve the capture prompt.'
               : 'The guest connected. Waiting for screen frames...'
       );
       return;
@@ -785,353 +610,188 @@ function connect() {
         setTimeout(connect, 5000);
       }
     }
-    
-    if (type === 'permissions.update') {
-      // Live permission updates from server
-      if (payload) {
-        if (typeof payload.input === 'boolean') {
-          inputEnabled = payload.input;
-          inputToggle.classList.toggle('active', inputEnabled);
-        }
-      }
-    }
   });
 
   ws.addEventListener('close', () => {
     if (serverRejected) return;
-    void showTroubleshootingStatus('Disconnected', 'The host client is no longer connected to the session. Retrying in 5s...');
-    setTimeout(connect, 5000);
+    
+    // Exponential backoff with jitter
+    const attempt = hostReconnectAttempts++;
+    const baseDelay = Math.min(BASE_HOST_RECONNECT_DELAY_MS * Math.pow(2, attempt), MAX_HOST_RECONNECT_DELAY_MS);
+    const jitter = Math.random() * 0.3 * baseDelay; // 0-30% jitter
+    const delay = Math.floor(baseDelay + jitter);
+    
+    void showTroubleshootingStatus('Disconnected', `The host client is no longer connected to the session. Retrying in ${Math.round(delay / 1000)}s... (attempt ${attempt + 1})`);
+    setTimeout(() => {
+      if (hostReconnectAttempts >= MAX_HOST_RECONNECT_ATTEMPTS) {
+        void showTroubleshootingStatus('Connection failed', 'Maximum reconnection attempts reached. Please refresh the page to try again.');
+        return;
+      }
+      connect();
+    }, delay);
   });
 }
 
 function updateWaitingForMobileFramesStatus(payload = {}) {
-  const isIos = guestPlatform === 'ios' || String(payload?.platform || '').toLowerCase() === 'ios' || Boolean(payload?.requiresNativeApp);
+  const isIos = isIosPlatformValue(guestPlatform) || isIosPlatformValue(payload?.platform) || Boolean(payload?.requiresNativeApp);
   const waitingTitle = isIos ? 'iPhone connected (waiting for screen broadcast)' : 'Mobile connected (waiting for screen broadcast)';
   const waitingMessage = isIos
-    ? 'Customer iPhone joined but no screen frames yet. Ask customer to open iOS support app and Start Broadcast.'
-    : 'Customer mobile joined but no screen frames yet. Ask customer to tap Start Broadcast / Share Screen.';
+    ? 'Customer iPhone joined but no screen frames yet. Ask customer to open iOS support app: Visit Host URL, Enter Code, Initiate ScreenShare, then Start Broadcast.'
+    : 'Customer mobile joined but no screen frames yet. Ask customer to tap Start Broadcast / Share Screen and approve capture permission.';
   showStatusPanel(waitingTitle, payload?.message || waitingMessage);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Input Handling (ScreenConnect-quality: pointer, keyboard, wheel, touch)
-// ═══════════════════════════════════════════════════════════════════════════════
+function remotePoint(event) {
+  // The streamed element uses `object-fit: contain`, which creates letterboxing.
+  // Coordinates must be mapped against the actual <img> box (not the container).
+  const frameEl = remoteFrame || document.querySelector('#nativeFrame') || document.querySelector('#nativeFrameLarge');
+  if (!frameEl) return { x: 0.5, y: 0.5 };
+  const imgBox = frameEl.getBoundingClientRect();
 
-function isRemoteScreenInteractive() {
-  return !blankScreenEnabled;
-}
+  // Default to the full box (works for near-square/edge cases).
+  let left = imgBox.left;
+  let top = imgBox.top;
+  let width = imgBox.width;
+  let height = imgBox.height;
 
-// Pointer event coalescing for smooth input at high frequency
-let latestMovePayload = null;
-let moveSendScheduled = false;
-const MOVE_SEND_MAX_HZ = 60;
-const MOVE_SEND_MIN_MS = 1000 / MOVE_SEND_MAX_HZ;
-let lastMoveSendAt = 0;
+  // When the <img> is rendered, object-fit:contain keeps aspect ratio and
+  // letterboxes inside the <img> box. Map pointer coordinates into that
+  // contained region.
+  const nw = (frameEl.naturalWidth || frameEl.width || 0) ;
+  const nh = (frameEl.naturalHeight || frameEl.height || 0) ;
 
-function scheduleSendMove() {
-  if (moveSendScheduled) return;
-  moveSendScheduled = true;
-  const doSend = () => {
-    moveSendScheduled = false;
-    if (!latestMovePayload) return;
-    const nowTs = Date.now();
-    if (nowTs - lastMoveSendAt < MOVE_SEND_MIN_MS) {
-      setTimeout(doSend, MOVE_SEND_MIN_MS - (nowTs - lastMoveSendAt));
-      return;
-    }
-    lastMoveSendAt = nowTs;
-    send('input', latestMovePayload);
-    latestMovePayload = null;
-  };
-  requestAnimationFrame(doSend);
-}
-
-function getRemotePoint(event) {
-  // Use canvas-based coordinate mapping for accurate input
-  if (SCViewer.currentImage && SCViewer.canvas) {
-    return SCViewer.screenToRemote(event.clientX, event.clientY);
-  }
-  
-  // Fallback to img-based mapping
-  const imgBox = remoteFrame.getBoundingClientRect();
-  let left = imgBox.left, top = imgBox.top, width = imgBox.width, height = imgBox.height;
-  const nw = remoteFrame.naturalWidth || 0;
-  const nh = remoteFrame.naturalHeight || 0;
   if (nw > 0 && nh > 0 && width > 0 && height > 0) {
+    // Contained image size inside the <img> box.
     const frameRatio = nw / nh;
     const boxRatio = width / height;
+
     if (boxRatio > frameRatio) {
+      // Box is wider than content: constrained by height.
       height = imgBox.height;
       width = height * frameRatio;
       left = imgBox.left + (imgBox.width - width) / 2;
+      top = imgBox.top;
     } else {
+      // Box is taller than content: constrained by width.
       width = imgBox.width;
       height = width / frameRatio;
       top = imgBox.top + (imgBox.height - height) / 2;
+      left = imgBox.left;
     }
   }
-  if (!(width > 0) || !(height > 0)) return { x: 0.5, y: 0.5 };
+
+  // If width/height is degenerate for any reason, avoid NaNs.
+  if (!(width > 0) || !(height > 0)) {
+    return { x: 0.5, y: 0.5 };
+  }
+
   const x = (event.clientX - left) / width;
   const y = (event.clientY - top) / height;
+
+
   return {
-    x: Number(Math.min(1, Math.max(0, x)).toFixed(5)),
-    y: Number(Math.min(1, Math.max(0, y)).toFixed(5))
+    x: Number(Math.min(1, Math.max(0, x)).toFixed(4)),
+    y: Number(Math.min(1, Math.max(0, y)).toFixed(4))
   };
 }
 
-function handlePointerDown(event) {
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
+function isRemoteScreenInteractive() {
+  // If the customer monitor is blanked, the image is effectively not interactable.
+  // We still allow the host to click so we can unblank (buttons already exist),
+  // but input events should not get sent.
+  return !blankScreenEnabled;
+}
+
+function sendPointer(event) {
+  if (!inputEnabled) return;
+  if (!isRemoteScreenInteractive()) return;
+  if (!connected) return;
+
   event.preventDefault();
   lastInputAt = Date.now();
-  
-  // Middle-button pan when zoomed
-  if (SCViewer.zoom > 1 && event.button === 1) {
-    SCViewer.isPanning = true;
-    SCViewer.panStartX = event.clientX - SCViewer.panX;
-    SCViewer.panStartY = event.clientY - SCViewer.panY;
-    return;
+
+  try {
+    if (event.type === 'pointerdown') {
+      remoteScreen.setPointerCapture?.(event.pointerId);
+    } else if (event.type === 'pointerup' || event.type === 'pointercancel') {
+      remoteScreen.releasePointerCapture?.(event.pointerId);
+    }
+  } catch {
+    // ignore pointer capture errors
   }
-  
-  try { remoteScreen.setPointerCapture?.(event.pointerId); } catch {}
+
   remoteScreen.focus();
-  
-  const point = getRemotePoint(event);
+  const point = remotePoint(event);
+  const kind = event.type === 'pointercancel' ? 'pointerup' : event.type;
+  const button = event.button >= 0 ? event.button : 0;
   send('input', {
-    kind: 'pointerdown',
+    kind,
     x: point.x,
     y: point.y,
-    button: event.button >= 0 ? event.button : 0,
-    buttons: event.buttons || 0,
+    button,
     pointerType: event.pointerType || 'mouse',
     seq: nextInputSeq()
   });
 }
 
-function handlePointerMove(event) {
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
-  event.preventDefault();
-  
-  // Handle pan when zoomed
-  if (SCViewer.isPanning && SCViewer.zoom > 1) {
-    SCViewer.panX = event.clientX - SCViewer.panStartX;
-    SCViewer.panY = event.clientY - SCViewer.panStartY;
-    SCViewer.constrainPan();
-    SCViewer.render();
-    return;
-  }
-  
-  const point = getRemotePoint(event);
-  if (!point) return;
-  
-  latestMovePayload = {
-    kind: 'pointermove',
-    x: point.x,
-    y: point.y,
-    button: event.button >= 0 ? event.button : 0,
-    buttons: event.buttons || 0,
-    pointerType: event.pointerType || 'mouse',
-    seq: nextInputSeq()
-  };
-  scheduleSendMove();
-}
 
-function handlePointerUp(event) {
-  if (SCViewer.isPanning) {
-    SCViewer.isPanning = false;
-    return;
-  }
-  
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
+function sendWheel(event) {
+  if (!inputEnabled) return;
+  if (!isRemoteScreenInteractive()) return;
+  if (!connected) return;
   event.preventDefault();
   lastInputAt = Date.now();
-  
-  try { remoteScreen.releasePointerCapture?.(event.pointerId); } catch {}
-  
-  const point = getRemotePoint(event);
-  send('input', {
-    kind: event.type === 'pointercancel' ? 'pointerup' : 'pointerup',
-    x: point.x,
-    y: point.y,
-    button: event.button >= 0 ? event.button : 0,
-    pointerType: event.pointerType || 'mouse',
-    seq: nextInputSeq()
-  });
-}
-
-function handleDoubleClick(event) {
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
-  event.preventDefault();
-  const point = getRemotePoint(event);
-  send('input', {
-    kind: 'pointerdblclick',
-    x: point.x,
-    y: point.y,
-    button: event.button >= 0 ? event.button : 0,
-    pointerType: event.pointerType || 'mouse',
-    seq: nextInputSeq()
-  });
-}
-
-function handleContextMenu(event) {
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
-  event.preventDefault();
-  // Right-click is handled via pointerdown with button=2
-}
-
-function handleWheel(event) {
-  // Ctrl+Scroll = zoom the viewer itself
-  if (event.ctrlKey || event.metaKey) return; // Handled by SCViewer
-  
-  if (!inputEnabled || !isRemoteScreenInteractive() || !connected) return;
-  event.preventDefault();
-  lastInputAt = Date.now();
-  
-  const point = getRemotePoint(event);
+  remoteScreen.focus();
+  const point = remotePoint(event);
   send('input', {
     kind: 'wheel',
     x: point.x,
     y: point.y,
-    deltaX: Math.max(-1200, Math.min(1200, Math.round(event.deltaX || 0))),
-    deltaY: Math.max(-1200, Math.min(1200, Math.round(event.deltaY))),
-    deltaMode: Number.isFinite(event.deltaMode) ? event.deltaMode : 0,
-    seq: nextInputSeq()
+    deltaY: Math.max(-1200, Math.min(1200, Math.round(event.deltaY)))
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Centralized Keyboard Input Handler
-// ─────────────────────────────────────────────────────────────────────────
-// Design goals (see FIX_PLAN.md):
-//  1. Exactly ONE code path handles host keyboard input — no other listener
-//     in this file may attach its own 'keydown'/'keyup' handlers.
-//  2. Exactly one keydown -> one input event, one keyup -> one release
-//     event. We track which physical keys are currently "down" (by
-//     event.code, which is layout/language independent) so that a genuine
-//     OS-level held-key situation does not get sent as if a *new* key was
-//     pressed on every autorepeat tick, while a truly new keydown always
-//     produces exactly one event. We still forward `repeat` to the host so
-//     the remote OS can apply its own native autorepeat behavior instead of
-//     the browser silently swallowing it.
-//  3. All standard Windows keys/symbols are transmitted: letters, digits,
-//     punctuation/Oem symbols, function keys, navigation keys, numpad,
-//     modifier keys (Shift/Ctrl/Alt/Meta, including left/right variants),
-//     Tab, Enter, Backspace, Escape, Delete, Insert, Home/End, Page Up/Down,
-//     Caps/Num/Scroll Lock, Print Screen, Pause, and the context-menu key.
-//     We rely on the browser's `event.code` (physical key identity) as the
-//     primary signal and pass `event.key` (the produced character, honoring
-//     the guest's current layout/shift state) alongside it, so the host can
-//     choose whichever representation is most reliable for a given key.
-
-// Tracks currently-pressed physical keys (by event.code) so repeated
-// keydown events for an already-down key can be recognized as OS autorepeat
-// (still forwarded, with repeat=true) rather than being misinterpreted as a
-// brand new press, and so a stray keyup for a key we never saw go down is
-// ignored instead of sending a spurious release.
-const heldKeys = new Set();
 
 function sendKey(event) {
-  if (!inputEnabled || !connected || !isRemoteScreenInteractive()) return;
-
-  const code = event.code || '';
-  const isKeyDown = event.type === 'keydown';
-  const isKeyUp = event.type === 'keyup';
-
-  if (isKeyDown) {
-    // If this exact physical key is already held, this is an OS autorepeat —
-    // still forward it (repeat=true) but do not double-track it.
-    heldKeys.add(code);
-  } else if (isKeyUp) {
-    // Ignore keyup for a key we never registered as down (can happen when
-    // focus moved mid-press) so we never send an unmatched release event.
-    if (code && !heldKeys.has(code)) {
-      event.preventDefault();
-      return;
-    }
-    heldKeys.delete(code);
-  }
-
+  if (!inputEnabled) return;
+  if (!connected) return;
+  if (!isRemoteScreenInteractive()) return;
   event.preventDefault();
   lastInputAt = Date.now();
+  // Avoid sending duplicate printable characters by not forwarding the
+  // keyup event for normal printable keys. Modifiers (Shift/Ctrl/Alt/Meta)
+  // still send both down and up so the remote side sees correct modifier state.
+  try {
+    const key = String(event.key || '');
+    const modifiers = ['Shift', 'ShiftLeft', 'ShiftRight', 'Control', 'ControlLeft', 'ControlRight', 'Alt', 'AltLeft', 'AltRight', 'Meta', 'MetaLeft', 'MetaRight'];
+    const nonPrintableSpecial = ['Enter','Backspace','Tab','Escape','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'];
+    const isModifier = modifiers.includes(event.code) || modifiers.includes(key);
+    const isPrintable = key.length === 1 || nonPrintableSpecial.includes(key);
 
-  send('input', {
-    kind: event.type, // 'keydown' | 'keyup' — one event in, one event out
-    key: event.key,
-    code: event.code,
-    location: event.location,
-    repeat: Boolean(event.repeat),
-    isComposing: Boolean(event.isComposing),
-    ctrlKey: event.ctrlKey,
-    altKey: event.altKey,
-    shiftKey: event.shiftKey,
-    metaKey: event.metaKey,
-    seq: nextInputSeq()
-  });
-}
-
-// Local-only shortcuts for the host viewer UI itself (zoom / HUD toggle).
-// These never touch the remote session and must be checked BEFORE we decide
-// whether to forward the key as remote input, so Ctrl+/-/0/H control the
-// viewer locally without also being sent to the guest machine.
-function handleLocalViewerShortcut(event) {
-  if (!(event.ctrlKey || event.metaKey)) return false;
-  if (event.type !== 'keydown') return false;
-  if (event.key === '=' || event.key === '+') { event.preventDefault(); SCViewer.setZoom(SCViewer.zoom + 0.25); return true; }
-  if (event.key === '-') { event.preventDefault(); SCViewer.setZoom(SCViewer.zoom - 0.25); return true; }
-  if (event.key === '0') { event.preventDefault(); SCViewer.resetZoom(); return true; }
-  if (event.key === 'h' || event.key === 'H') { event.preventDefault(); SCViewer.toggleHUD(); return true; }
-  return false;
-}
-
-// Only forward keys to the remote guest when the remote screen area (or the
-// page body, i.e. nothing more specific) has focus. This prevents keystrokes
-// typed into chat, session-info fields, or any other on-page UI control from
-// being sent to the guest machine as remote input.
-function isFocusEligibleForRemoteInput() {
-  const active = document.activeElement;
-  return active === remoteScreen || active === document.body || active === null;
-}
-
-// Single window-level listener for keydown/keyup. We intentionally do NOT
-// also bind listeners on `remoteScreen`/`document` — a second binding was
-// the root cause of duplicated input events reaching the guest.
-function onWindowKeyEvent(event) {
-  if (handleLocalViewerShortcut(event)) return;
-  if (!isFocusEligibleForRemoteInput()) return;
-  sendKey(event);
-}
-
-window.addEventListener('keydown', onWindowKeyEvent);
-window.addEventListener('keyup', onWindowKeyEvent);
-
-// Release every physical key we believe is currently held on the remote
-// side (sends one synthetic keyup per held code) and clears local tracking.
-// Used any time focus moves away from an eligible target (chat box, another
-// window, etc.) so a key press+release that straddles that focus change can
-// never leave a key "stuck" down on the guest machine.
-function releaseAllHeldKeys() {
-  if (!heldKeys.size) return;
-  if (inputEnabled && connected) {
-    for (const code of heldKeys) {
-      send('input', { kind: 'keyup', key: '', code, location: 0, repeat: false, isComposing: false, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, seq: nextInputSeq() });
+    if (event.type === 'keyup' && isPrintable && !isModifier) {
+      // suppress keyup for printable keys to avoid duplicate characters
+      return;
     }
+
+    send('input', {
+      kind: event.type,
+      key: event.key,
+      code: event.code,
+      location: event.location,
+      repeat: Boolean(event.repeat),
+      isComposing: Boolean(event.isComposing),
+      ctrlKey: event.ctrlKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey,
+      seq: nextInputSeq()
+    });
+  } catch (e) {
+    // Best-effort: if anything goes wrong, still attempt to send basic key info.
+    try { send('input', { kind: event.type, key: event.key, seq: nextInputSeq() }); } catch (e2) {}
   }
-  heldKeys.clear();
 }
 
-// Full window blur (e.g. Alt+Tab to another application).
-window.addEventListener('blur', releaseAllHeldKeys);
-
-// Focus moving to a different in-page element (e.g. the chat input). We
-// defer to a microtask so document.activeElement reflects the new target.
-document.addEventListener('focusout', () => {
-  setTimeout(() => {
-    if (!isFocusEligibleForRemoteInput()) releaseAllHeldKeys();
-  }, 0);
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Control Actions
-// ═══════════════════════════════════════════════════════════════════════════════
 
 async function setServerInputPermission(value) {
   try {
@@ -1140,7 +800,9 @@ async function setServerInputPermission(value) {
       headers: { 'Content-Type': 'application/json', 'x-agent-token': token },
       body: JSON.stringify({ input: Boolean(value) })
     });
-  } catch {}
+  } catch (e) {
+    // Non-fatal: local toggle still works, but server relay may remain disabled.
+  }
 }
 
 function toggleInput() {
@@ -1153,7 +815,7 @@ function toggleInput() {
 function toggleBlankScreen(forceValue) {
   blankScreenEnabled = typeof forceValue === 'boolean' ? forceValue : !blankScreenEnabled;
   blankToggle.classList.toggle('active', blankScreenEnabled);
-  if (blankTile) blankTile.classList.toggle('enabled', blankScreenEnabled);
+  blankTile.classList.toggle('enabled', blankScreenEnabled);
   send('blank-screen', {
     enabled: blankScreenEnabled,
     title: 'Windows is updating',
@@ -1166,7 +828,9 @@ function toggleBlockInput(forceValue) {
   blockInputEnabled = typeof forceValue === 'boolean' ? forceValue : !blockInputEnabled;
   blockInputToggle?.classList.toggle('active', blockInputEnabled);
   blockGuest?.classList.toggle('enabled', blockInputEnabled);
-  send('block-input', { enabled: blockInputEnabled });
+  send('block-input', {
+    enabled: blockInputEnabled
+  });
   setStatus(blockInputEnabled ? 'Blocking guest input' : 'Restoring guest input', blockInputEnabled ? 'Customer keyboard and mouse input will be blocked.' : 'Customer keyboard and mouse input will be restored.');
 }
 
@@ -1179,64 +843,155 @@ async function queueFile() {
   setStatus('File queued', 'The file transfer request was sent to the guest client.');
 }
 
-function captureScreenshot() {
-  if (!SCViewer.currentImage) return;
-  const link = document.createElement('a');
-  link.download = `screenshot-${sessionId}-${Date.now()}.png`;
-  
-  const c = document.createElement('canvas');
-  c.width = SCViewer.currentImage.naturalWidth;
-  c.height = SCViewer.currentImage.naturalHeight;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(SCViewer.currentImage, 0, 0);
-  link.href = c.toDataURL('image/png');
-  link.click();
-  setStatus('Screenshot saved', 'The screenshot was saved to your downloads.');
+// Input: send down/up immediately, coalesce high-frequency move/wheel events.
+let latestMovePayload = null;
+let latestWheelPayload = null;
+let moveSendScheduled = false;
+let wheelSendScheduled = false;
+
+const MOVE_SEND_MAX_HZ = 60; // feels real-time while preventing WS flooding
+const WHEEL_SEND_MAX_HZ = 60;
+const MOVE_SEND_MIN_MS = 1000 / MOVE_SEND_MAX_HZ;
+const WHEEL_SEND_MIN_MS = 1000 / WHEEL_SEND_MAX_HZ;
+let lastMoveSendAt = 0;
+let lastWheelSendAt = 0;
+
+function scheduleSendMove() {
+  if (moveSendScheduled) return;
+  moveSendScheduled = true;
+  const doSend = () => {
+    moveSendScheduled = false;
+    if (!latestMovePayload) return;
+
+    const nowTs = Date.now();
+    if (nowTs - lastMoveSendAt < MOVE_SEND_MIN_MS) {
+      // Re-schedule shortly to respect max rate.
+      setTimeout(doSend, MOVE_SEND_MIN_MS - (nowTs - lastMoveSendAt));
+      return;
+    }
+
+    lastMoveSendAt = nowTs;
+    send('input', latestMovePayload);
+    latestMovePayload = null;
+  };
+  // Use rAF for low latency; fall back to setTimeout if tab is throttled.
+  requestAnimationFrame(doSend);
 }
 
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    const el = document.querySelector('.remote-window') || document.documentElement;
-    el.requestFullscreen?.().catch(() => {});
-  } else {
-    document.exitFullscreen?.();
-  }
+function scheduleSendWheel() {
+  if (wheelSendScheduled) return;
+  wheelSendScheduled = true;
+  const doSend = () => {
+    wheelSendScheduled = false;
+    if (!latestWheelPayload) return;
+
+    const nowTs = Date.now();
+    if (nowTs - lastWheelSendAt < WHEEL_SEND_MIN_MS) {
+      setTimeout(doSend, WHEEL_SEND_MIN_MS - (nowTs - lastWheelSendAt));
+      return;
+    }
+
+    lastWheelSendAt = nowTs;
+    send('input', latestWheelPayload);
+    latestWheelPayload = null;
+  };
+  requestAnimationFrame(doSend);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Event Bindings
-// ═══════════════════════════════════════════════════════════════════════════════
+function handlePointerDown(event) {
+  // Pointer down should be immediate.
+  sendPointer(event);
+}
 
-// Bind to both the canvas and the remote screen container
+function handlePointerMove(event) {
+  if (!inputEnabled) return;
+  if (!isRemoteScreenInteractive()) return;
+  if (!connected) return;
+  event.preventDefault();
+
+  const point = remotePoint(event);
+  if (!point) return;
+
+  // Coalesce: keep only latest pointer position.
+  latestMovePayload = {
+    kind: event.type === 'pointercancel' ? 'pointerup' : event.type,
+    x: point.x,
+    y: point.y,
+    button: event.button >= 0 ? event.button : 0,
+    pointerType: event.pointerType || 'mouse',
+    seq: nextInputSeq()
+  };
+  scheduleSendMove();
+}
+
+function handlePointerUp(event) {
+  // Pointer up/cancel should be immediate.
+  sendPointer(event);
+}
+
+function handleWheel(event) {
+  // Wheel should be immediate-ish but not flood.
+  if (!inputEnabled) return;
+  if (!isRemoteScreenInteractive()) return;
+  if (!connected) return;
+  event.preventDefault();
+  const point = remotePoint(event);
+  if (!point) return;
+
+  latestWheelPayload = {
+    kind: 'wheel',
+    x: point.x,
+    y: point.y,
+    deltaX: Math.max(-1200, Math.min(1200, Math.round(event.deltaX || 0))),
+    deltaY: Math.max(-1200, Math.min(1200, Math.round(event.deltaY || 0))),
+    deltaMode: Number.isFinite(event.deltaMode) ? event.deltaMode : 0,
+    seq: nextInputSeq()
+  };
+  scheduleSendWheel();
+}
+
+function handleDoubleClick(event) {
+  if (!inputEnabled) return;
+  if (!isRemoteScreenInteractive()) return;
+  if (!connected) return;
+  event.preventDefault();
+  const point = remotePoint(event);
+  send('input', {
+    kind: 'pointerdblclick',
+    x: point.x,
+    y: point.y,
+    button: event.button >= 0 ? event.button : 0,
+    pointerType: event.pointerType || 'mouse',
+    seq: nextInputSeq()
+  });
+}
+
 remoteScreen.addEventListener('pointerdown', handlePointerDown);
 remoteScreen.addEventListener('pointermove', handlePointerMove);
 remoteScreen.addEventListener('pointerup', handlePointerUp);
 remoteScreen.addEventListener('pointercancel', handlePointerUp);
 remoteScreen.addEventListener('dblclick', handleDoubleClick);
-remoteScreen.addEventListener('contextmenu', handleContextMenu);
 remoteScreen.addEventListener('wheel', handleWheel, { passive: false });
-// Keyboard input is handled exclusively by the single centralized
-// window-level listener registered above (onWindowKeyEvent / sendKey).
-// Do not add additional keydown/keyup listeners here — see
-// "Centralized Keyboard Input Handler" section for rationale.
+remoteScreen.addEventListener('keydown', sendKey);
+remoteScreen.addEventListener('keyup', sendKey);
 
-// Window resize handler for canvas
-window.addEventListener('resize', () => {
-  if (SCViewer.currentImage) {
-    requestAnimationFrame(() => SCViewer.render());
-  }
+
+
+window.addEventListener('keydown', (event) => {
+  if (event.target === remoteScreen) return;
+  if (document.activeElement === remoteScreen || document.activeElement === document.body) sendKey(event);
 });
-
+window.addEventListener('keyup', (event) => {
+  if (event.target === remoteScreen) return;
+  if (document.activeElement === remoteScreen || document.activeElement === document.body) sendKey(event);
+});
 inputToggle.classList.add('active');
 inputToggle.addEventListener('click', toggleInput);
 blankToggle.addEventListener('click', toggleBlankScreen);
-if (blankTile) blankTile.addEventListener('click', toggleBlankScreen);
+blankTile.addEventListener('click', toggleBlankScreen);
 blockInputToggle?.addEventListener('click', () => toggleBlockInput());
-if (blockGuest) blockGuest.addEventListener('click', () => toggleBlockInput());
+blockGuest?.addEventListener('click', () => toggleBlockInput());
 fileQueue.addEventListener('click', () => queueFile().catch(() => setStatus('File queue failed', 'Could not queue the file transfer.')));
-
-// Screenshot button
-document.getElementById('snapshot')?.addEventListener('click', captureScreenshot);
 
 chatForm?.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1253,5 +1008,4 @@ endSessionButton?.addEventListener('click', () => {
   ws?.close();
 });
 
-// Start connection
 connect();

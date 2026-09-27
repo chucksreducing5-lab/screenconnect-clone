@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Remote Support — Administration</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/admin-theme.css">
 </head>
 <body class="admin-page">
 
@@ -89,6 +89,7 @@
         <button class="sc-btn sm danger" id="btnAdminLogout">⎋ Logout</button>
       </div>
       <button class="sc-btn sm secondary" onclick="location.href='/'">← Host Page</button>
+      <button class="sc-btn sm secondary" data-testid="open-recordings-btn" onclick="window.open('/replay.html','_blank')">🎞 Recordings</button>
     </div>
 
     <!-- Content area -->
@@ -125,6 +126,32 @@
             <dt>Relay Host</dt><dd id="sysRelay">-</dd>
             <dt>Uptime</dt><dd id="sysUptime">-</dd>
           </dl>
+        </div>
+
+        <div style="background:var(--sc-bg2);border:1px solid var(--sc-border);border-radius:6px;padding:16px;margin-bottom:16px;" data-testid="system-health-card">
+          <div class="form-section-title">System Health</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;">
+            <div>
+              <div style="font-size:11px;color:var(--sc-text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Status</div>
+              <div style="font-size:16px;font-weight:700;" id="healthStatus" data-testid="health-status">—</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--sc-text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Rate Limiter</div>
+              <div style="font-size:16px;font-weight:700;" id="healthLimiter" data-testid="health-limiter">—</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--sc-text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Redis</div>
+              <div style="font-size:16px;font-weight:700;" id="healthRedis" data-testid="health-redis">—</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--sc-text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Active Sessions</div>
+              <div style="font-size:16px;font-weight:700;color:var(--sc-teal);" id="healthSessions" data-testid="health-sessions">—</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--sc-text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Uptime</div>
+              <div style="font-size:16px;font-weight:700;" id="healthUptime" data-testid="health-uptime">—</div>
+            </div>
+          </div>
         </div>
 
         <div style="background:var(--sc-bg2);border:1px solid var(--sc-border);border-radius:6px;padding:16px;">
@@ -661,6 +688,26 @@
   }
 
   // ── Overview ──
+  async function loadHealth() {
+    try {
+      const hres = await fetch('/api/healthz');
+      if (!hres.ok) return;
+      const h = await hres.json();
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      set('healthStatus', h.ok ? 'Healthy' : 'Degraded');
+      set('healthLimiter', h.rateLimiter === 'redis' ? 'Redis (shared)' : 'In-memory');
+      const redisEl = document.getElementById('healthRedis');
+      if (redisEl) { redisEl.textContent = h.redisConnected ? 'Connected' : 'Off'; redisEl.style.color = h.redisConnected ? 'var(--sc-online)' : 'var(--sc-text-dim)'; }
+      set('healthSessions', h.activeSessions ?? '—');
+      const s = Number(h.uptimeSeconds || 0);
+      const hrs = Math.floor(s / 3600), mins = Math.floor((s % 3600) / 60);
+      const up = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+      set('healthUptime', up);
+      const upEl = document.getElementById('sysUptime');
+      if (upEl && upEl.textContent === '-') upEl.textContent = up;
+    } catch {}
+  }
+
   async function loadOverview() {
     try {
       const res = await fetch('/api/sessions');
@@ -675,6 +722,7 @@
       document.getElementById('sysUrl').textContent = window.location.origin;
       document.getElementById('sysVersion').textContent = '1.0.0';
     } catch {}
+    loadHealth();
     try {
       const res = await fetch('/api/audit?limit=10');
       if (!res.ok) return;
@@ -838,6 +886,8 @@
   // ── Init ──
   loadCurrentUser();
   loadOverview();
+  loadHealth();
+  setInterval(loadHealth, 15000);
 })();
 </script>
 </body>

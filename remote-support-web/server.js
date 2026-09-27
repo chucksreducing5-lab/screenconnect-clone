@@ -11,9 +11,12 @@ import { spawn } from 'child_process';
 import crypto from 'crypto';
 import tls from 'tls';
 import { initRedis } from './lib/redisClient.js';
-import { rateLimit } from './lib/rateLimit.js';
+import { rateLimit, guard } from './lib/rateLimit.js';
 import { requestLogger } from './lib/logger.js';
 import { getReqToken, extractWsToken } from './lib/tokens.js';
+import { getRedis } from './lib/redisClient.js';
+import { corsOptions, csrfGuard, securityHeaders, isHttps, getAllowedOrigins } from './lib/security.js';
+import * as recording from './lib/recording.js';
 
 initRedis();
 
@@ -78,7 +81,7 @@ const HOST_VIEWER_BUILD = '0.2.11-browser-relay-compatible';
 const MAX_SCREEN_FRAME_BUFFER_BYTES = 512 * 1024;
 const NO_FRAME_TELEMETRY_TIMEOUT_MS = 15000;
 const MOBILE_HEARTBEAT_INTERVAL_MS = 5000;
-const MOBILE_HEARTBEAT_TIMEOUT_MS = 15000;
+const MOBILE_HEARTBEAT_TIMEOUT_MS = Number(process.env.MOBILE_HEARTBEAT_TIMEOUT_MS || 30000);
 const MOBILE_FRAME_STALE_TIMEOUT_MS = 15000;
 const dataDir = path.join(__dirname, 'data');
 const authStatePath = path.join(dataDir, 'auth.json');
@@ -468,16 +471,9 @@ function requireTechnician(req, res, next) {
 
 app.set('trust proxy', true);
 app.use(requestLogger);
-app.use(cors({ origin: true, credentials: true }));
-app.use((req, res, next) => {
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || '');
-  if (proto === 'https') {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  }
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  next();
-});
+app.use(cors(corsOptions));
+app.use(csrfGuard);
+app.use(securityHeaders);
 app.use(express.json());
 app.get(['/login', '/Login'], (req, res) => {
   sendDiscoveryLinkHeaders(req, res);
@@ -492,8 +488,24 @@ app.get('/api/config', (req, res) => {
   // that host ever redirects (WebSocket clients do not follow 3xx redirects).
   res.json({ publicBaseUrl: requestOrigin(req) });
 });
+app.get('/api/healthz', (req, res) => {
+  const redisUp = Boolean(getRedis());
+  let active = 0;
+  for (const s of sessions.values()) { if (s && s.status === 'active') active += 1; }
+  res.json({
+    ok: true,
+    status: 'healthy',
+    uptimeSeconds: Math.round(process.uptime()),
+    rateLimiter: redisUp ? 'redis' : 'memory',
+    redisConnected: redisUp,
+    activeSessions: active,
+    totalSessions: sessions.size,
+    allowedOrigins: getAllowedOrigins(),
+    time: new Date().toISOString(),
+  });
+});
 app.post('/api/login', async (req, res) => {
-  if (!(await rateLimit(req, res, 'login', 10, 60000))) return;
+  if (!(await guard(req, res, 'login'))) return;
   const username = String(req.body?.username || '');
   const password = String(req.body?.password || '');
   if (username !== adminCredentials.username || password !== adminCredentials.password) {
@@ -507,11 +519,12 @@ app.post('/api/login', async (req, res) => {
   });
   res.setHeader(
     'Set-Cookie',
-    `${AUTH_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}`
+    `${AUTH_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}${isHttps(req) ? '; Secure' : ''}`
   );
   res.json({ ok: true });
 });
 app.post('/api/password-reset/request', async (req, res) => {
+  if (!(await guard(req, res, 'reset'))) return;
   const email = String(req.body?.email || '').trim().toLowerCase();
   const adminEmail = String(adminCredentials.email || '').trim().toLowerCase();
   if (!adminEmail) return res.status(400).json({ error: 'Admin reset email is not configured.' });
@@ -567,7 +580,7 @@ app.post('/api/password-reset/confirm', (req, res) => {
 app.post('/api/logout', (req, res) => {
   const cookies = parseCookies(req.headers.cookie);
   authSessions.delete(cookies[AUTH_COOKIE]);
-  res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${isHttps(req) ? '; Secure' : ''}`);
   res.json({ ok: true });
 });
 
@@ -1528,7 +1541,8 @@ app.post('/api/agent/:id/jobs/:jobId/result', (req, res) => {
   res.status(404).json({ error: 'Job not found' });
 });
 
-app.post('/api/session/create', requireTechnician, (req, res) => {
+app.post('/api/session/create', requireTechnician, async (req, res) => {
+  if (!(await guard(req, res, 'create'))) return;
   const deviceId = req.body?.deviceId || null;
   const device = deviceId ? devices.get(deviceId) : null;
   const permanentAccess = Boolean(req.body?.permanentAccess);
@@ -1622,7 +1636,7 @@ app.post('/api/session/:id/validate', (req, res) => {
 });
 
 app.post('/api/session/:id/join', async (req, res) => {
-  if (!(await rateLimit(req, res, 'join', 20, 60000))) return;
+  if (!(await guard(req, res, 'join'))) return;
   const requestedId = String(req.params.id || '');
   const normalizedRequested = normalizeJoinCode(requestedId);
   const numericRequested = normalizeNumericJoinCode(requestedId);
@@ -2409,6 +2423,8 @@ app.post('/api/session/:id/recording', requireTechnician, (req, res) => {
   if (!s) return res.status(404).json({ error: 'Session not found' });
 
   s.recording = Boolean(req.body?.recording);
+  if (s.recording) recording.startRecording(s);
+  else recording.stopRecording(s.id);
   schedulePersistState();
   addAudit(s.recording ? 'recording.started' : 'recording.stopped', {
     actor: 'technician',
@@ -2419,12 +2435,32 @@ app.post('/api/session/:id/recording', requireTechnician, (req, res) => {
   res.json({ ok: true, recording: s.recording });
 });
 
+// ── Session recordings (replay) ──
+app.get('/api/recordings', requireTechnician, (_req, res) => {
+  res.json(recording.listRecordings());
+});
+app.get('/api/recordings/:id', requireTechnician, (req, res) => {
+  const meta = recording.getRecordingMeta(req.params.id);
+  if (!meta) return res.status(404).json({ error: 'Recording not found' });
+  res.json(meta);
+});
+app.get('/api/recordings/:id/frames', requireTechnician, (req, res) => {
+  const from = Number(req.query.from || 0);
+  const limit = Number(req.query.limit || 50);
+  res.json(recording.getRecordingFrames(req.params.id, from, limit));
+});
+app.delete('/api/recordings/:id', requireTechnician, (req, res) => {
+  const ok = recording.deleteRecording(req.params.id);
+  res.json({ ok });
+});
+
 app.post('/api/session/:id/end', requireTechnician, (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
 
   s.status = 'ended';
   s.endedAt = now();
+  recording.stopRecording(s.id);
   schedulePersistState();
   addAudit('session.ended', {
     actor: 'technician',
@@ -3367,18 +3403,21 @@ wss.on('connection', (ws, req) => {
     s.mobileHeartbeatTimeoutAt = Date.now() + MOBILE_HEARTBEAT_TIMEOUT_MS;
     s.mobileStreamReconnectRequired = false;
 
-    // Do not mark mobile broadcast client as fully connected until first frame arrives.
-    if (isIosBroadcastClient || isAndroidBroadcastClient) {
+    // Do not mark ANY mobile broadcast client (iOS, Android, or generic
+    // 'mobile-broadcast') as fully connected until the first screen.frame
+    // arrives, so "live" always means real frame data — not just a socket.
+    if (isMobileBroadcast) {
+      const label = isIosBroadcastClient ? 'ios' : (isAndroidBroadcastClient ? 'android' : 'mobile');
       s.nativeConnected = false;
-      s.customerScreenStatus = isIosBroadcastClient ? 'ios_broadcast_connected_waiting_first_frame' : 'android_broadcast_connected_waiting_first_frame';
+      s.customerScreenStatus = `${label}_broadcast_connected_waiting_first_frame`;
       updateCustomerLifecycleStatus(s, 'waiting_permission');
-      addAudit(`${isIosBroadcastClient ? 'ios' : 'android'}.broadcast.connected.waiting_first_frame`, {
+      addAudit(`${label}.broadcast.connected.waiting_first_frame`, {
         actor: 'system',
         sessionId: s.id,
         deviceId: s.deviceId,
-        message: `${isIosBroadcastClient ? 'iOS' : 'Android'} broadcast client connected; waiting for first screen.frame before marking session active.`
+        message: `${label} broadcast client connected; waiting for first screen.frame before marking session active.`
       });
-    } else if (isMobileBroadcast || isMobileViewer) {
+    } else if (isMobileViewer) {
       s.nativeConnected = true;
       updateCustomerLifecycleStatus(s, 'authenticated');
     } else if (clientKind === 'windows-native-agent') {
@@ -3588,6 +3627,7 @@ wss.on('connection', (ws, req) => {
         s.lastCustomerSequence = Math.max(Number(s.lastCustomerSequence || -1), sequence);
       }
       s.lastFrameAt = now();
+      if (s.recording) recording.recordFrame(s.id, payload);
       updateCustomerLifecycleStatus(s, 'sending_frames');
       s.mobileHeartbeatTimeoutAt = Date.now() + MOBILE_HEARTBEAT_TIMEOUT_MS;
       s.noFrameTelemetryDueAt = null;
@@ -3942,7 +3982,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
   const sid = nanoid(32);
   authSessions.set(sid, { username, createdAt: Date.now() });
-  res.cookie(AUTH_COOKIE, sid, { httpOnly:true, sameSite:'lax', maxAge: COOKIE_MAX_AGE_SECONDS*1000 });
+  res.cookie(AUTH_COOKIE, sid, { httpOnly:true, sameSite:'lax', secure: isHttps(req), maxAge: COOKIE_MAX_AGE_SECONDS*1000 });
   res.json({ success:true, username });
 });
 
