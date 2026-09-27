@@ -53,6 +53,10 @@ let browserFrameTimer;
 let browserHeartbeatTimer;
 let browserFrameSequence = 0;
 let browserFirstFrameSent = false;
+let browserReconnectAttempts = 0;
+const MAX_BROWSER_RECONNECT_ATTEMPTS = 12;
+const BASE_BROWSER_RECONNECT_DELAY_MS = 1000;
+const MAX_BROWSER_RECONNECT_DELAY_MS = 30000;
 let currentPlatform = detectPlatform();
 
 function detectPlatform() {
@@ -312,11 +316,12 @@ function customerWebSocketUrl() {
   // the native app's screen.frame messages are relayed to the host instead of dropped.
   const client = 'browser-broadcast';
 
+  // Token is sent via the Sec-WebSocket-Protocol subprotocol (see openBrowserSocket),
+  // NOT the query string, so it never lands in server/proxy access logs or Referer.
   url.search = new URLSearchParams({
     role: 'customer',
     client,
-    sessionId: activeSessionId,
-    token: activeCustomerToken
+    sessionId: activeSessionId
   }).toString();
   return url.toString();
 }
@@ -422,9 +427,11 @@ function openBrowserSocket({ streamScreen }) {
     return;
   }
 
-  browserWs = new WebSocket(customerWebSocketUrl());
+  const wsProtocols = activeCustomerToken ? ['cp.token.' + activeCustomerToken] : undefined;
+  browserWs = new WebSocket(customerWebSocketUrl(), wsProtocols);
   browserWs.addEventListener('open', () => {
     browserFirstFrameSent = false;
+    browserReconnectAttempts = 0;
     const isMobileBroadcastClient = requiresNativeMobileBroadcast() || (currentPlatform === 'ios' && !supportsScreenCapture());
     let waitingStatus;
     let waitingMessage;
@@ -496,20 +503,30 @@ function openBrowserSocket({ streamScreen }) {
     clearInterval(browserFrameTimer);
     browserFrameTimer = null;
 
-    // Attempt to reconnect signaling channel if the page is still active.
-    if (activeSessionId && activeCustomerToken && downloadPanel && !downloadPanel.hidden) {
-      const delay = browserFirstFrameSent ? 3000 : 1000;
-      window.setTimeout(() => {
-        if (browserWs && (browserWs.readyState === WebSocket.OPEN || browserWs.readyState === WebSocket.CONNECTING)) return;
-        // If we were already sharing, try to resume if the stream is still active.
-        const shouldResumeStream = Boolean(browserStream && browserStream.active);
-        if (browserFirstFrameSent && !shouldResumeStream) {
-          setMessage('Screen broadcast stopped.');
-          browserFirstFrameSent = false;
-        }
-        openBrowserSocket({ streamScreen: shouldResumeStream });
-      }, delay);
+    // Reconnect the signaling channel on ANY drop while we still hold a valid
+    // session — do NOT gate on downloadPanel visibility. That gate left the
+    // browser-share and mobile flows (where the panel is hidden) permanently
+    // disconnected after a Wi-Fi<->cellular switch, tab backgrounding, phone
+    // lock or transient network blip: the socket closed and never came back.
+    if (!activeSessionId || !activeCustomerToken) return;
+    if (browserReconnectAttempts >= MAX_BROWSER_RECONNECT_ATTEMPTS) {
+      setMessage('Connection lost. Please rejoin the session.');
+      return;
     }
+    // Exponential backoff with jitter (1s -> 2s -> ... capped at 30s).
+    const attempt = browserReconnectAttempts++;
+    const base = Math.min(BASE_BROWSER_RECONNECT_DELAY_MS * Math.pow(2, attempt), MAX_BROWSER_RECONNECT_DELAY_MS);
+    const delay = Math.floor(base + Math.random() * 0.3 * base);
+    window.setTimeout(() => {
+      if (browserWs && (browserWs.readyState === WebSocket.OPEN || browserWs.readyState === WebSocket.CONNECTING)) return;
+      // If we were already sharing, resume only if the captured stream is still active.
+      const shouldResumeStream = Boolean(browserStream && browserStream.active);
+      if (browserFirstFrameSent && !shouldResumeStream) {
+        setMessage('Reconnecting…');
+        browserFirstFrameSent = false;
+      }
+      openBrowserSocket({ streamScreen: shouldResumeStream });
+    }, delay);
   });
 }
 
@@ -943,8 +960,8 @@ async function startBrowserShare() {
 async function fetchTroubleshooting() {
   if (!activeSessionId || !activeCustomerToken) return null;
   try {
-    const url = `/api/session/${encodeURIComponent(activeSessionId)}/troubleshooting?token=${encodeURIComponent(activeCustomerToken)}`;
-    const res = await fetch(url);
+    const url = `/api/session/${encodeURIComponent(activeSessionId)}/troubleshooting`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${activeCustomerToken}` } });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -981,12 +998,12 @@ function troubleshootingMessage(data) {
 async function pollNativeConnection() {
   if (!activeSessionId || !activeCustomerToken) return;
 
-  const statusPath = `/api/session/${encodeURIComponent(activeSessionId)}/customer-status?token=${encodeURIComponent(activeCustomerToken)}`;
+  const statusPath = `/api/session/${encodeURIComponent(activeSessionId)}/customer-status`;
 
   let response;
   try {
     response = await fetch(statusPath, {
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json', Authorization: `Bearer ${activeCustomerToken}` }
     });
   } catch {
     if (downloadPanel && !downloadPanel.hidden) {

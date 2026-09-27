@@ -10,6 +10,12 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import tls from 'tls';
+import { initRedis } from './lib/redisClient.js';
+import { rateLimit } from './lib/rateLimit.js';
+import { requestLogger } from './lib/logger.js';
+import { getReqToken, extractWsToken } from './lib/tokens.js';
+
+initRedis();
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -461,16 +467,33 @@ function requireTechnician(req, res, next) {
 }
 
 app.set('trust proxy', true);
+app.use(requestLogger);
 app.use(cors({ origin: true, credentials: true }));
+app.use((req, res, next) => {
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || '');
+  if (proto === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 app.use(express.json());
 app.get(['/login', '/Login'], (req, res) => {
   sendDiscoveryLinkHeaders(req, res);
   res.sendFile(path.join(publicDir, 'login.html'));
 });
 app.get('/api/config', (req, res) => {
-  res.json({ publicBaseUrl: publicOrigin(req) });
+  // Return the origin the browser actually loaded (via X-Forwarded-Host behind
+  // Cloudflare/Caddy), falling back to the configured public URL only when the
+  // request origin is loopback. This keeps the browser customer's signaling
+  // WebSocket on the SAME host it opened (apex stays apex, www stays www) instead
+  // of being forced onto www.helpsupport.top, whose upgrade can silently fail if
+  // that host ever redirects (WebSocket clients do not follow 3xx redirects).
+  res.json({ publicBaseUrl: requestOrigin(req) });
 });
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
+  if (!(await rateLimit(req, res, 'login', 10, 60000))) return;
   const username = String(req.body?.username || '');
   const password = String(req.body?.password || '');
   if (username !== adminCredentials.username || password !== adminCredentials.password) {
@@ -1598,7 +1621,8 @@ app.post('/api/session/:id/validate', (req, res) => {
   return res.status(400).json({ error: 'Bad role' });
 });
 
-app.post('/api/session/:id/join', (req, res) => {
+app.post('/api/session/:id/join', async (req, res) => {
+  if (!(await rateLimit(req, res, 'join', 20, 60000))) return;
   const requestedId = String(req.params.id || '');
   const normalizedRequested = normalizeJoinCode(requestedId);
   const numericRequested = normalizeNumericJoinCode(requestedId);
@@ -1607,13 +1631,7 @@ app.post('/api/session/:id/join', (req, res) => {
     return res.status(404).json({
       error: 'Session not found',
       code: 'SESSION_NOT_FOUND',
-      message: 'This join code is not valid (or the session was deleted).',
-      diagnostics: {
-        requestedId,
-        normalizedRequested,
-        numericRequested,
-        platform: normalizeClientPlatform(req.body?.platform || req.body?.os || req.get('user-agent'))
-      }
+      message: 'This join code is not valid (or the session was deleted).'
     });
   }
 
@@ -1933,7 +1951,7 @@ app.get('/api/session/:id/host-launch', requireTechnician, (req, res) => {
 app.get('/api/session/:id/customer-status', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
-  if (req.query.token !== s.customer.token) return res.status(401).json({ error: 'Invalid customer token' });
+  if (getReqToken(req) !== s.customer.token) return res.status(401).json({ error: 'Invalid customer token' });
 
   res.json({
     ok: true,
@@ -2213,7 +2231,7 @@ app.get('/download/agent-file/:file', (req, res) => {
 app.get('/api/session/:id/ios-broadcast-diagnostics', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
-  const tokenParam = req.query.token || req.header('x-session-token');
+  const tokenParam = getReqToken(req);
   const ok = isAuthenticated(req) || tokenParam === s.customer.token || tokenParam === s.agent.token;
   if (!ok) return res.status(401).json({ error: 'Login required' });
 
@@ -2245,7 +2263,7 @@ app.get('/api/session/:id/ios-broadcast-diagnostics', (req, res) => {
 app.get('/api/session/:id/troubleshooting', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
-  const tokenParam = req.query.token || req.header('x-session-token');
+  const tokenParam = getReqToken(req);
   const ok = isAuthenticated(req) || tokenParam === s.customer.token || tokenParam === s.agent.token;
   if (!ok) return res.status(401).json({ error: 'Login required' });
 
@@ -2288,7 +2306,7 @@ app.get('/api/session/:id/troubleshooting', (req, res) => {
 app.get('/api/session/:id/status', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   // Allow either a logged-in technician OR the customer/agent token
-  const tokenParam = req.query.token || req.header('x-session-token');
+  const tokenParam = getReqToken(req);
   const isTech = isAuthenticated(req);
   const isCustomer = tokenParam && s && tokenParam === s.customer.token;
   const isAgent = tokenParam && s && tokenParam === s.agent.token;
@@ -2639,7 +2657,7 @@ app.post('/api/host-passes/revoke-all', requireTechnician, (_req, res) => {
 app.get('/api/session/:id/diagnostics/:tab', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
-  const tokenParam = req.query.token || req.header('x-session-token');
+  const tokenParam = getReqToken(req);
   if (!isAuthenticated(req) && tokenParam !== s.agent.token) return res.status(401).json({ error: 'Login required' });
   
   const tab = req.params.tab;
@@ -3162,7 +3180,7 @@ app.post('/api/session/:id/invite', requireTechnician, async (req, res) => {
 app.get('/api/session/:id/capture-stats', (req, res) => {
   const s = findSessionByIdOrCode(req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found' });
-  const tokenParam = req.query.token || req.header('x-session-token');
+  const tokenParam = getReqToken(req);
   const ok = isAuthenticated(req) || tokenParam === s.customer.token || tokenParam === s.agent.token;
   if (!ok) return res.status(401).json({ error: 'Login required' });
 
@@ -3249,12 +3267,16 @@ wss.on('connection', (ws, req) => {
   const clientKindRaw = url.searchParams.get('client') || '';
   const clientKind = String(clientKindRaw).toLowerCase();
   const sessionId = url.searchParams.get('sessionId');
-  const token = url.searchParams.get('token');
+  const token = extractWsToken(req, url);
 
   if (sessionId === 'global' && rawRole === 'agent') {
-    // Basic auth check for global technician channel
-    // In a real app we'd check the tech's auth session cookie or a token.
-    // For now, we'll just allow it if rawRole is agent.
+    // Require a valid technician auth-session cookie for the global updates channel
+    // (previously this was granted to ANYONE claiming role=agent).
+    if (!isAuthenticated(req)) {
+      try { ws.send(JSON.stringify({ type: 'error', payload: { message: 'Technician login required.' } })); } catch {}
+      ws.close(1008, 'Unauthorized');
+      return;
+    }
     ws.role = 'agent';
     ws.sessionId = 'global';
     ws.connectionId = nanoid(10);
