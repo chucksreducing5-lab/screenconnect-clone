@@ -128,6 +128,9 @@
           </dl>
         </div>
 
+        <div id="redisAlert" data-testid="redis-alert-banner" style="display:none;background:rgba(200,120,0,0.15);border:1px solid #b3701a;color:#ffcf8a;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+          ⚠️ Redis is unavailable — rate limiting has fallen back to <strong>in-memory</strong> (per-process, not shared across instances). Check your Redis connection.
+        </div>
         <div style="background:var(--sc-bg2);border:1px solid var(--sc-border);border-radius:6px;padding:16px;margin-bottom:16px;" data-testid="system-health-card">
           <div class="form-section-title">System Health</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;">
@@ -699,6 +702,8 @@
       const redisEl = document.getElementById('healthRedis');
       if (redisEl) { redisEl.textContent = h.redisConnected ? 'Connected' : 'Off'; redisEl.style.color = h.redisConnected ? 'var(--sc-online)' : 'var(--sc-text-dim)'; }
       set('healthSessions', h.activeSessions ?? '—');
+      const alert = document.getElementById('redisAlert');
+      if (alert) alert.style.display = h.redisConnected ? 'none' : 'block';
       const s = Number(h.uptimeSeconds || 0);
       const hrs = Math.floor(s / 3600), mins = Math.floor((s % 3600) / 60);
       const up = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;

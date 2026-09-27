@@ -20,6 +20,15 @@ import * as recording from './lib/recording.js';
 
 initRedis();
 
+const RECORDINGS_RETENTION_DAYS = Number(process.env.RECORDINGS_RETENTION_DAYS || 0);
+if (RECORDINGS_RETENTION_DAYS > 0) {
+  const sweep = () => {
+    try { const n = recording.pruneOlderThan(RECORDINGS_RETENTION_DAYS); if (n) console.log(`[recordings] pruned ${n} older than ${RECORDINGS_RETENTION_DAYS}d`); } catch {}
+  };
+  setInterval(sweep, 86400000);
+  setTimeout(sweep, 10000);
+}
+
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2452,6 +2461,12 @@ app.get('/api/recordings/:id/frames', requireTechnician, (req, res) => {
 app.delete('/api/recordings/:id', requireTechnician, (req, res) => {
   const ok = recording.deleteRecording(req.params.id);
   res.json({ ok });
+});
+app.post('/api/recordings/prune', requireTechnician, (req, res) => {
+  const days = Number(req.body?.days);
+  if (!Number.isFinite(days) || days <= 0) return res.status(400).json({ error: 'Provide a positive number of days.' });
+  const removed = recording.pruneOlderThan(days);
+  res.json({ ok: true, removed, days });
 });
 
 app.post('/api/session/:id/end', requireTechnician, (req, res) => {

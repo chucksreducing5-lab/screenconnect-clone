@@ -122,4 +122,25 @@
 
   loadList();
   setInterval(loadList, 15000); // refresh list so live recordings update
+
+  const pruneBtn = document.getElementById('pruneBtn');
+  if (pruneBtn) {
+    pruneBtn.addEventListener('click', async () => {
+      const days = Number(document.getElementById('pruneDays').value) || 0;
+      if (days <= 0) return;
+      if (!confirm(`Delete all recordings older than ${days} days? This cannot be undone.`)) return;
+      pruneBtn.disabled = true; pruneBtn.textContent = 'Pruning…';
+      try {
+        const res = await fetch('/api/recordings/prune', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days }),
+        });
+        const data = await res.json();
+        alert(res.ok ? `Removed ${data.removed} recording(s).` : (data.error || 'Prune failed.'));
+        loadList();
+      } catch { alert('Prune failed.'); }
+      finally { pruneBtn.disabled = false; pruneBtn.textContent = 'Prune'; }
+    });
+  }
 })();

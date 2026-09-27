@@ -30,6 +30,12 @@
   <div class="rp-wrap">
     <div class="rp-panel" data-testid="recordings-list-panel">
       <div class="rp-title">Recordings</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;">
+        <span style="font-size:11px;color:var(--sc-text-dim,#7fa6b0);">Delete older than</span>
+        <input type="number" id="pruneDays" min="1" value="30" data-testid="prune-days" style="width:56px;padding:4px 6px;border-radius:6px;background:transparent;color:inherit;border:1px solid var(--sc-border,#1f3b44);">
+        <span style="font-size:11px;color:var(--sc-text-dim,#7fa6b0);">days</span>
+        <button id="pruneBtn" data-testid="prune-btn" style="margin-left:auto;background:transparent;color:#ff8a8a;border:1px solid #6b2b2b;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;">Prune</button>
+      </div>
       <div id="recordingsList"><div class="rp-empty">Loading…</div></div>
     </div>
     <div class="rp-panel rp-stage">

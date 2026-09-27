@@ -116,3 +116,18 @@ export function deleteRecording(sessionId) {
   stopRecording(id);
   try { fs.rmSync(path.join(RECORDINGS_DIR, id), { recursive: true, force: true }); return true; } catch { return false; }
 }
+
+// Delete recordings whose startedAt is older than `days` days. Live (in-progress)
+// recordings are never deleted. Returns the number removed.
+export function pruneOlderThan(days) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return 0;
+  const cutoff = Date.now() - d * 86400000;
+  let removed = 0;
+  for (const r of listRecordings()) {
+    if (r.live) continue;
+    const ts = r.stoppedAt || r.startedAt || 0;
+    if (ts && ts < cutoff) { if (deleteRecording(r.sessionId)) removed += 1; }
+  }
+  return removed;
+}
